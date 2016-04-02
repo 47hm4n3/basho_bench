@@ -72,19 +72,7 @@ init([]) ->
     Mode    = basho_bench_config:get(mode), 
     KeyGen = basho_bench_config:get(key_generator),
     ValGen = basho_bench_config:get(value_generator),
-
-%%
-%% Expand operations list into tuple suitable for weighted, random draw
-%%
-ops_tuple() ->
-    F =
-        fun({OpTag, Count}) ->
-                lists:duplicate(Count, {OpTag, OpTag});
-           ({Label, OpTag, Count}) ->
-                lists:duplicate(Count, {Label, OpTag})
-        end,
-    Ops = [F(X) || X <- basho_bench_config:get(operations, [])],
-    list_to_tuple(lists:flatten(Ops)).
+    Ops = ops_tuple(),
 
 
   %sup params
@@ -171,3 +159,16 @@ io:fwrite("hello from myleader:init --> ~s \n", driver),
     ]                     
   }                        
 }. 
+
+%%
+%% Expand operations list into tuple suitable for weighted, random draw
+%%
+ops_tuple() ->
+    F =
+        fun({OpTag, Count}) ->
+                lists:duplicate(Count, {OpTag, OpTag});
+           ({Label, OpTag, Count}) ->
+                lists:duplicate(Count, {Label, OpTag})
+        end,
+    Ops = [F(X) || X <- basho_bench_config:get(operations, [])],
+    list_to_tuple(lists:flatten(Ops)).
