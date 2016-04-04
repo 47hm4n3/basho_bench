@@ -45,6 +45,14 @@
 %                 worker_pid,
 %                 sup_id}).
 
+
+-record(state_loc, { id,
+                 driver_state,
+                 ops_len,
+                 parent_pid,
+                 worker_pid,
+                 sup_id}).
+
 %% Config params
 -record(state, {  keygen,              %%worker
                   valgen,
