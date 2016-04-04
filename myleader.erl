@@ -47,6 +47,17 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 
+start() ->
+ok = mygenserv:launchWorkersSup(),
+io:fwrite("hello from leader:start 1\n"),
+ok = application:set_env(basho_bench_app, is_running, true),
+io:fwrite("hello from leader:start 2\n"),
+ok = basho_bench_stats:run(),
+io:fwrite("hello from leader:start 3\n"),
+ok = basho_bench_measurement:run(),
+io:fwrite("hello from leader:start 4\n"),
+ok = mygenserv:launchWorkers().
+
 %% ===================================================================
 %% Supervisor callbacks
 %% ===================================================================
