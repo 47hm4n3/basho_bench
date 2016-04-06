@@ -29,21 +29,27 @@
          stop_child/1]).
 
 %% Supervisor callbacks
--export([init/1]).
+-export([init/0]).
 
 -include("basho_bench.hrl").
 
-%% Config params
 -record(state, {  keygen,              %%worker
                   valgen,
                   driver,
                   shutdown_on_error,
                   rng_seed,
                   mode,
+                  id,
+                  driver_state,
+                  ops,
+                  ops_len,
+                  parent_pid,
+                  worker_pid,
+                  sup_id,
                   concurrent,          %%sup
                   measurement_driver,
                   log_level,
-                  c_log_level,           %%b_b
+                  c_log_level,            %%b_b
                   pre_hook,
                   post_hook,
                   code_paths,
@@ -54,7 +60,15 @@
                   set_size,
                   num_updates,
                   num_reads,
-                  staleness }).
+                  measure_staleness,
+                  worker_id,
+                  time,
+                  type_dict,
+                  pb_pid,
+                  num_partitions,
+                  commit_time,
+                  pb_port,
+                  target_node}).
 
 %% Helper macro for declaring children of supervisor
 -define(CHILD(I, Type), {I, {I, start_link, []}, permanent, 5000, Type, [I]}).
@@ -81,8 +95,8 @@ stop_child(Id) ->
 %% Supervisor callbacks
 %% ===================================================================
 
-init(Args[]) -> % variable state en entree Args
-
+init() -> % variable state en entree Args
+	Args = #state{},
 	io:fwrite("hello from sup:init\n"),
     %% Get the number concurrent workers we're expecting and generate child
     %% specs for each

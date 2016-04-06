@@ -46,12 +46,18 @@
                   driver,
                   shutdown_on_error,
                   rng_seed,
-                  ops,
                   mode,
+                  id,
+                  driver_state,
+                  ops,
+                  ops_len,
+                  parent_pid,
+                  worker_pid,
+                  sup_id,
                   concurrent,          %%sup
                   measurement_driver,
                   log_level,
-                  c_log_level           %%b_b
+                  c_log_level,            %%b_b
                   pre_hook,
                   post_hook,
                   code_paths,
@@ -62,7 +68,15 @@
                   set_size,
                   num_updates,
                   num_reads,
-                  staleness }).
+                  measure_staleness,
+                  worker_id,
+                  time,
+                  type_dict,
+                  pb_pid,
+                  num_partitions,
+                  commit_time,
+                  pb_port,
+                  target_node}).
 
 %% ====================================================================
 %% API
@@ -81,6 +95,8 @@ new(Id) ->
 
     % variable state en entree
 
+    Args = #state{},
+
     IPs = Args#state.antidote_pb_ips,
     PbPort = Args#state.antidote_pb_port,
     Types  = Args#state.antidote_types,
@@ -88,7 +104,7 @@ new(Id) ->
     NumUpdates  = Args#state.num_updates,
     NumReads = Args#state.num_reads,
     NumPartitions = length(IPs),
-    MeasureStaleness = Args#state.staleness,
+    MeasureStaleness = Args#state.measure_staleness,
 
     %% Choose the node using our ID as a modulus
     TargetNode = lists:nth((Id rem length(IPs)+1), IPs),

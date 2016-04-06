@@ -45,14 +45,6 @@
 %                 worker_pid,
 %                 sup_id}).
 
-
--record(state_loc, { id,
-                 driver_state,
-                 ops_len,
-                 parent_pid,
-                 worker_pid,
-                 sup_id}).
-
 %% Config params
 -record(state, {  keygen,              %%worker
                   valgen,
@@ -60,6 +52,13 @@
                   shutdown_on_error,
                   rng_seed,
                   mode,
+                  id,
+                  driver_state,
+                  ops,
+                  ops_len,
+                  parent_pid,
+                  worker_pid,
+                  sup_id,
                   concurrent,          %%sup
                   measurement_driver,
                   log_level,
@@ -74,7 +73,15 @@
                   set_size,
                   num_updates,
                   num_reads,
-                  staleness }).
+                  measure_staleness,
+                  worker_id,
+                  time,
+                  type_dict,
+                  pb_pid,
+                  num_partitions,
+                  commit_time,
+                  pb_port,
+                  target_node}).
 -include("basho_bench.hrl").
 
 %% ====================================================================
@@ -99,8 +106,8 @@ stop(Pids) ->
 %% gen_server callbacks
 %% ====================================================================
 
-init([SupChild, Id],Args) -> % variable state en entree Args
-
+init([SupChild, Id]) -> 
+    Args = #state{},
 	io:fwrite("hello from worker:init\n"),
     %% Setup RNG seed for worker sub-process to use; incorporate the ID of
     %% the worker to ensure consistency in load-gen
@@ -111,12 +118,7 @@ init([SupChild, Id],Args) -> % variable state en entree Args
     %% The RNG_SEED is static by default for replicability of key size
     %% and value size generation between test runs.
     process_flag(trap_exit, true),
-    {A1, A2, A3} =
-        case Args#state.rng_seed = (rng_seed, {42, 23, 12}) of
-            {Aa, Ab, Ac} -> {Aa, Ab, Ac};
-            now -> now()
-        end,
-
+    {A1, A2, A3} = Args#state.rng_seed,
     RngSeed = {A1+Id, A2+Id, A3+Id},
 
     %% Pull all config settings from environment
@@ -129,14 +131,24 @@ init([SupChild, Id],Args) -> % variable state en entree Args
     KeyGen = basho_bench_keygen:new(Args#state.keygen, Id),
     ValGen = basho_bench_valgen:new(Args#state.valgen, Id),
 
-    State = #state { id = Id, keygen = KeyGen, valgen = ValGen,
+    State = #state { keygen = KeyGen, 
+                     valgen = ValGen,
                      driver = Driver,
                      shutdown_on_error = ShutdownOnError,
-                     ops = Ops, ops_len = size(Ops),
+                     ops = Ops,
                      rng_seed = RngSeed,
+                     id = Id, 
+                     ops_len = size(Ops),
                      parent_pid = self(),
                      sup_id = SupChild},
 
+    %State_Loc = #state_loc {
+                % id = Id,
+                % driver_state = DriverState,
+                % ops_len = size(Ops),
+                % parent_pid = self(),
+                % worker_pid,
+                % sup_id = SupChild},
     %% Use a dedicated sub-process to do the actual work. The work loop may need
     %% to sleep or otherwise delay in a way that would be inappropriate and/or
     %% inefficient for a gen_server. Furthermore, we want the loop to be as
@@ -164,13 +176,13 @@ init([SupChild, Id],Args) -> % variable state en entree Args
 
     {ok, State#state { worker_pid = WorkerPid }}.
 
-handle_call(run, _From, State) ->
+handle_call(run, _From, State ) ->
     State#state.worker_pid ! run,
-    {reply, ok, State}.
+    {reply, ok }.
 
 handle_cast(run, State) ->
     State#state.worker_pid ! run,
-    {noreply, State}.
+    {noreply, State }.
 
 handle_info({'EXIT', Pid, Reason}, State) ->
     case Reason of
@@ -178,20 +190,20 @@ handle_info({'EXIT', Pid, Reason}, State) ->
             %% Clean shutdown of the worker; spawn a process to terminate this
             %% process via the supervisor API and make sure it doesn't restart.
             spawn(fun() -> stop_worker(State#state.sup_id) end),
-            {noreply, State};
+            {noreply , State};
 
         _ ->
             ?ERROR("Worker ~p exited with ~p~n", [Pid, Reason]),
             %% Worker process exited for some other reason; stop this process
             %% as well so that everything gets restarted by the sup
-            {stop, normal, State}
+            {stop, normal }
     end.
 
 terminate(_Reason, _State) ->
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
-    {ok, State}.
+    {ok, State }.
 
 
 
@@ -229,14 +241,14 @@ stop_worker(SupChild) ->
 %    list_to_tuple(lists:flatten(Ops)).
 
 
-worker_init(State) ->
+worker_init(State ) ->
     %% Trap exits from linked parent process; use this to ensure the driver
     %% gets a chance to cleanup
     process_flag(trap_exit, true),
     random:seed(State#state.rng_seed),
     worker_idle_loop(State).
 
-worker_idle_loop(State) ->
+worker_idle_loop(State ) ->
     Driver = State#state.driver,
     receive
         {init_driver, Caller} ->
@@ -251,7 +263,7 @@ worker_idle_loop(State) ->
             end,
             worker_idle_loop(State#state { driver_state = DriverState });
         run ->
-            case Args#state.mode of
+            case State#state.mode of
                 max ->
                     ?INFO("Starting max worker: ~p\n", [self()]),
                     max_worker_run_loop(State);
@@ -328,7 +340,7 @@ worker_next_op(State) ->
             normal
     end.
 
-needs_shutdown(State) ->
+needs_shutdown(State ) ->
     Parent = State#state.parent_pid,
     receive
         {'EXIT', Pid, _Reason} ->
@@ -348,8 +360,8 @@ needs_shutdown(State) ->
     end.
 
 
-max_worker_run_loop(State) ->
-    case worker_next_op(State) of
+max_worker_run_loop(State ) ->
+    case worker_next_op(State ) of
         {ok, State2} ->
             case needs_shutdown(State2) of
                 true ->
@@ -361,11 +373,11 @@ max_worker_run_loop(State) ->
             exit(ExitReason)
     end.
 
-rate_worker_run_loop(State, Lambda) ->
+rate_worker_run_loop(State , Lambda) ->
     %% Delay between runs using exponentially distributed delays to mimic
     %% queue.
     timer:sleep(trunc(basho_bench_stats:exponential(Lambda))),
-    case worker_next_op(State) of
+    case worker_next_op(State ) of
         {ok, State2} ->
             case needs_shutdown(State2) of
                 true ->

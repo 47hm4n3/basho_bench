@@ -5,7 +5,7 @@
 -include("basho_bench.hrl").
 
 %% API
--export([start_link/0]).
+-export([start_link/0, start/1]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -14,17 +14,47 @@
 -define(CHILD(I, Type), {I, {I, start_link, []}, permanent, 5000, Type, [I]}).
 
 %% Config params
+%-record(state, {  keygen,              %%worker
+%                  valgen,
+%                  driver,
+%                  shutdown_on_error,
+%                  rng_seed,
+%                  ops,
+%                  mode,
+%                  concurrent,          %%sup
+%                  measurement_driver,
+%                  log_level,
+%                  c_log_level,           %%b_b
+%                  pre_hook,
+%                  post_hook,
+%                  code_paths,
+%                  source_dir,
+%                  antidote_pb_ips,    %%driver
+%                  antidote_pb_port,
+%                  antidote_types,
+%                  set_size,
+%                  num_updates,
+%                  num_reads,
+%                  staleness }).
+
+%% Config params
 -record(state, {  keygen,              %%worker
                   valgen,
                   driver,
                   shutdown_on_error,
                   rng_seed,
-                  ops,
                   mode,
+                  id,
+                  driver_state,
+                  ops,
+                  ops_len,
+                  parent_pid,
+                  worker_pid,
+                  sup_id,
                   concurrent,          %%sup
                   measurement_driver,
                   log_level,
-                  c_log_level           %%b_b
+                  c_log_level,            %%b_b
                   pre_hook,
                   post_hook,
                   code_paths,
@@ -35,9 +65,15 @@
                   set_size,
                   num_updates,
                   num_reads,
-                  staleness }).
-
-
+                  measure_staleness,
+                  worker_id,
+                  time,
+                  type_dict,
+                  pb_pid,
+                  num_partitions,
+                  commit_time,
+                  pb_port,
+                  target_node}).
 %% ===================================================================
 %% API functions
 %% ===================================================================
@@ -47,7 +83,7 @@ start_link() ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
 
 
-start() ->
+start(State) ->
 ok = mygenserv:launchWorkersSup(),
 io:fwrite("hello from leader:start 1\n"),
 ok = application:set_env(basho_bench_app, is_running, true),
@@ -56,7 +92,7 @@ ok = basho_bench_stats:run(),
 io:fwrite("hello from leader:start 3\n"),
 ok = basho_bench_measurement:run(),
 io:fwrite("hello from leader:start 4\n"),
-ok = mygenserv:launchWorkers().
+ok = mygenserv:launchWorkers(State).
 
 %% ===================================================================
 %% Supervisor callbacks
@@ -143,9 +179,9 @@ init([]) ->
                     set_size = SetSize,
                     num_updates = NumUpdates,
                     num_reads = NumReads,
-                    staleness = MeasureStaleness },
+                    measure_staleness = MeasureStaleness },
 
-io:fwrite("hello from myleader:init --> ~s \n", driver),
+    io:fwrite("hello from myleader:init --> ~s \n", State#state.driver),
 
    {ok,                   % ok, supervisor here's what we want you to do
   {                       

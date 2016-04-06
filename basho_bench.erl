@@ -32,6 +32,13 @@
                   shutdown_on_error,
                   rng_seed,
                   mode,
+                  id,
+                  driver_state,
+                  ops,
+                  ops_len,
+                  parent_pid,
+                  worker_pid,
+                  sup_id,
                   concurrent,          %%sup
                   measurement_driver,
                   log_level,
@@ -40,13 +47,22 @@
                   post_hook,
                   code_paths,
                   source_dir,
+                  duration,
                   antidote_pb_ips,    %%driver
                   antidote_pb_port,
                   antidote_types,
                   set_size,
                   num_updates,
                   num_reads,
-                  staleness }).
+                  measure_staleness,
+                  worker_id,
+                  time,
+                  type_dict,
+                  pb_pid,
+                  num_partitions,
+                  commit_time,
+                  pb_port,
+                  target_node}).
 
 %% ====================================================================
 %% API
@@ -63,6 +79,7 @@ cli_options() ->
     ].
 
 main(Args) ->
+    MyArg = #state{ keygen = 1, pre_hook = 1, post_hook = 1},
     {Opts, Configs} = check_args(getopt:parse(cli_options(), Args)),
     ok = maybe_show_usage(Opts),
     ok = maybe_net_node(Opts),
@@ -79,7 +96,7 @@ main(Args) ->
     basho_bench_config:set(test_id, BenchName),
 
     application:load(lager),
-    ConsoleLagerLevel = Args#state.log_level,
+    ConsoleLagerLevel = MyArg#state.log_level,
     ErrorLog = filename:join([TestDir, "error.log"]),
     ConsoleLog = filename:join([TestDir, "console.log"]),
     CrashLog = filename:join([TestDir, "crash.log"]),
@@ -97,16 +114,16 @@ main(Args) ->
     basho_bench_config:load(Configs),
 
     %% Log level can be overriden by the config files
-    CustomLagerLevel = Args#state.c_log_level,
+    CustomLagerLevel = MyArg#state.c_log_level,
     lager:set_loglevel(lager_console_backend, CustomLagerLevel),
     lager:set_loglevel(lager_file_backend, ConsoleLog, CustomLagerLevel),
 
     %% Init code path
-    add_code_paths(Args#state.code_paths),
+    add_code_paths(MyArg#state.code_paths),
 
     %% If a source directory is specified, compile and load all .erl files found
     %% there.
-    case Args#state.source_dir of
+    case MyArg#state.source_dir of
         [] ->
             ok;
         SourceDir ->
@@ -131,7 +148,7 @@ main(Args) ->
     %% Pull the runtime duration from the config and sleep until that's passed OR
     %% the supervisor process exits
     Mref = erlang:monitor(process, whereis(basho_bench_sup)),
-    DurationMins = Args#state.duration,
+    DurationMins = MyArg#state.duration,
     wait_for_stop(Mref, DurationMins).
 
 
@@ -264,11 +281,11 @@ user_friendly_bytes(Size) ->
                 {Size, bytes}, ['KB', 'MB', 'GB']).
 
 log_dimensions() ->
-    case basho_bench_keygen:dimension(Args#state.keygen) of
+    case basho_bench_keygen:dimension(MyArg#state.keygen) of
         undefined ->
             ok;
         Keyspace ->
-            Valspace = basho_bench_valgen:dimension(Args#state.valgen, Keyspace),
+            Valspace = basho_bench_valgen:dimension(MyArg#state.valgen, Keyspace),
             {Size, Desc} = user_friendly_bytes(Valspace),
             ?INFO("Est. data size: ~.2f ~s\n", [Size, Desc])
     end.
@@ -288,10 +305,10 @@ load_source_files(Dir) ->
     filelib:fold_files(Dir, ".*.erl", false, CompileFn, ok).
 
 run_pre_hook() ->
-    run_hook(Args#state.pre_hook).
+    run_hook(MyArg#state.pre_hook).
 
 run_post_hook() ->
-    run_hook(Args#state.run_post_hook).
+    run_hook(MyArg#state.post_hook).
 
 run_hook({Module, Function}) ->
     Module:Function();
