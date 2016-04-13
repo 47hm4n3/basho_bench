@@ -51,7 +51,7 @@
 %% API
 %% ====================================================================
 
-start_link(SupChild, Id, StateW) ->
+start_link(SupChild, Id, {StateW, SD}) ->
 	io:fwrite("hello from worker:start_link\n"),
     gen_server:start_link(?MODULE, [SupChild, Id, StateW], []).
 
@@ -69,7 +69,7 @@ stop(Pids) ->
 %% gen_server callbacks
 %% ====================================================================
 
-init([SupChild, Id, StateW]) ->
+init([SupChild, Id, {StateW, SD}]) ->
 	io:fwrite("hello from worker:init\n"),
     %% Setup RNG seed for worker sub-process to use; incorporate the ID of
     %% the worker to ensure consistency in load-gen

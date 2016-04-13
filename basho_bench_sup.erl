@@ -44,7 +44,7 @@ start_link({SW, SD}) ->
 	io:fwrite("hello from sup:start_link\n"),
     supervisor:start_link({local, ?MODULE}, ?MODULE, [SW, SD]).
 
-workers({SW, SD}) ->
+workers(SW) ->
 	%io:fwrite("hello from sup:workers before\n"),
 	[Pid || {_Id, Pid, worker, [basho_bench_worker]} <- supervisor:which_children(?MODULE)].
 	%io:fwrite("hello from sup:workers after\n").
@@ -58,7 +58,7 @@ stop_child(Id) ->
 %% Supervisor callbacks
 %% ===================================================================
 
-init([]) ->
+init([SW, SD]) ->
 	io:fwrite("hello from sup:init\n"),
     %% Get the number concurrent workers we're expecting and generate child
     %% specs for each

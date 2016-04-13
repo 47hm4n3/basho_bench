@@ -24,8 +24,9 @@
   say_hello/0,                 % - prints "Hello" to stdout
   get_count/0,                 % - returns the count state
   launchWorkersSup/1,
-  launchWorkers/1,
-  set_config/1]).
+  launchWorkers/1%,
+  %set_config/1
+  ]).
   
 %% ---------------------------------------------------------------------------
 %% gen_server Function Exports
@@ -108,10 +109,10 @@ launchWorkers({SW, SD}) ->
   gen_server:call(?SERVER, {launchWorkers, {SW, SD}}),
   io:fwrite("hello from mygenserv:launchWorkers after\n").    
   
-set_config({SW, SD}) ->              
-  io:fwrite("hello from mygenserv:set_config before\n"),
-  gen_server:call(?SERVER, {set_config, {SW, SD}}),
-  io:fwrite("hello from mygenserv:set_config after\n").
+%set_config({SW, SD}) ->              
+%  io:fwrite("hello from mygenserv:set_config before\n"),
+%  gen_server:call(?SERVER, {set_config, {SW, SD}}),
+%  io:fwrite("hello from mygenserv:set_config after\n").
     
                            
 %% ---------------------------------------------------------------------------
@@ -128,8 +129,8 @@ init([]) ->                    % these are the behaviour callbacks. init/1 is
 %     #state{count=Count+1}     % and also update state
 %    }.
 
-handle_call({launchWorkersSup, {SW, SD}}, _From, #state{count=Count}) -> 
-  io:fwrite("hello from mygenserv:handle_call launchWorkersSup 0 ~s \n", SW),
+handle_call({launchWorkersSup,{SW, SD}}, _From, #state{count=Count}) -> 
+  io:fwrite("hello from mygenserv:handle_call launchWorkersSup 0 \n"),
   basho_bench_sup:start_link({SW, SD}),
   io:fwrite("hello from mygenserv:handle_call launchWorkersSup 1\n"),
     {reply, 
@@ -149,7 +150,6 @@ handle_call({launchWorkers, {SW, SD}}, _From, #state{count=Count}) ->
 handle_call({set_config, {SW, SD}}, _From, #state{count=Count}) -> 
   io:fwrite("hello from mygenserv:handle_call set_config 0\n"),
   %% faire le traitement de set_config sur supervisor et sur worker selon les besoins
-
   io:fwrite("hello from mygenserv:handle_call set_config 1\n"),
     {reply, 
      Count,                    % here we synchronously respond with Count
