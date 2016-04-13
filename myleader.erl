@@ -57,18 +57,18 @@ start() ->
 io:format("Hello From myleader avant recup \n"),
   {SW, SD} = recup(),
 io:format("Hello From myleader apres recup \n"),
-io:format("Hello From myleader avant send config \n"),
+  io:format("Hello From myleader avant set_config \n"),
   ok = mygenserv:set_config({SW,SD}),
-io:format("Hello From myleader apres send config \n"),
-%	ok = mygenserv:launchWorkersSup(),
+  io:format("Hello From myleader apres set_config \n"),
+	ok = mygenserv:launchWorkersSup({SW,SD}),
 	io:fwrite("hello from leader:start 1\n"),
 	ok = application:set_env(basho_bench_app, is_running, true),
 	io:fwrite("hello from leader:start 2\n"),
 	ok = basho_bench_stats:run(),
 	io:fwrite("hello from leader:start 3\n"),
-	ok = basho_bench_measurement:run().
-%	io:fwrite("hello from leader:start 4\n"),
-%	ok = mygenserv:launchWorkers().
+	ok = basho_bench_measurement:run(),
+	io:fwrite("hello from leader:start 4\n"),
+	ok = mygenserv:launchWorkers({SW,SD}).
 
 %% ===================================================================
 %% Supervisor callbacks

@@ -100,17 +100,17 @@ get_count() ->                 % Here, on the other hand, we do expect a
                                
 launchWorkersSup({SW, SD}) ->
   io:fwrite("hello from mygenserv:launchWorkersSup before\n"),
-  gen_server:call(?SERVER, {launchWorkersSup,SW, SD}),
+  gen_server:call(?SERVER, {launchWorkersSup, {SW, SD}}),
   io:fwrite("hello from mygenserv:launchWorkersSup after\n").
   
 launchWorkers({SW, SD}) ->
   io:fwrite("hello from mygenserv:launchWorkers before\n"),
-  gen_server:call(?SERVER, {launchWorkers,SW, SD}),
+  gen_server:call(?SERVER, {launchWorkers, {SW, SD}}),
   io:fwrite("hello from mygenserv:launchWorkers after\n").    
   
 set_config({SW, SD}) ->              
   io:fwrite("hello from mygenserv:set_config before\n"),
-  gen_server:call(?SERVER, {set_config, SW, SD}),
+  gen_server:call(?SERVER, {set_config, {SW, SD}}),
   io:fwrite("hello from mygenserv:set_config after\n").
     
                            
@@ -128,8 +128,8 @@ init([]) ->                    % these are the behaviour callbacks. init/1 is
 %     #state{count=Count+1}     % and also update state
 %    }.
 
-handle_call({launchWorkersSup,SW, SD}, _From, #state{count=Count}) -> 
-  io:fwrite("hello from mygenserv:handle_call launchWorkersSup 0\n"),
+handle_call({launchWorkersSup, {SW, SD}}, _From, #state{count=Count}) -> 
+  io:fwrite("hello from mygenserv:handle_call launchWorkersSup 0 ~s \n", SW),
   basho_bench_sup:start_link({SW, SD}),
   io:fwrite("hello from mygenserv:handle_call launchWorkersSup 1\n"),
     {reply, 
@@ -137,27 +137,20 @@ handle_call({launchWorkersSup,SW, SD}, _From, #state{count=Count}) ->
      #state{count=Count+1}     % and also update state
     }; 
     
-handle_call({launchWorkers,SW, SD}, _From, #state{count=Count}) -> 
+handle_call({launchWorkers, {SW, SD}}, _From, #state{count=Count}) -> 
   io:fwrite("hello from mygenserv:handle_call launchWorkers 0\n"),
   basho_bench_worker:run(basho_bench_sup:workers({SW, SD})),
-  io:fwrite("hello from mygenserv:handle_call launchWorkers 0\n"),
+  io:fwrite("hello from mygenserv:handle_call launchWorkers 1\n"),
     {reply, 
      Count,                    % here we synchronously respond with Count
      #state{count=Count+1}     % and also update state
     }; 
     
-handle_call({set_config, SW, SD}, _From, #state{count=Count}) -> 
+handle_call({set_config, {SW, SD}}, _From, #state{count=Count}) -> 
   io:fwrite("hello from mygenserv:handle_call set_config 0\n"),
   %% faire le traitement de set_config sur supervisor et sur worker selon les besoins
-    io:fwrite("hello from mygenserv:launchWorkersSup before\n"),
-    gen_server:call(?SERVER, {launchWorkersSup,SW, SD}),
-    io:fwrite("hello from mygenserv:launchWorkersSup after\n"),
 
-    io:fwrite("hello from mygenserv:launchWorkers before\n"),
-    gen_server:call(?SERVER, {launchWorkers,SW, SD}),
-    io:fwrite("hello from mygenserv:launchWorkers after\n"),
-  
-  io:fwrite("hello from mygenserv:handle_call set_config 0\n"),
+  io:fwrite("hello from mygenserv:handle_call set_config 1\n"),
     {reply, 
      Count,                    % here we synchronously respond with Count
      #state{count=Count+1}     % and also update state
