@@ -24,51 +24,14 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0,
-         workers/0,
+-export([start_link/1,
+         workers/1,
          stop_child/1]).
 
 %% Supervisor callbacks
--export([init/0]).
+-export([init/1]).
 
 -include("basho_bench.hrl").
-
--record(state, {  keygen,              %%worker
-                  valgen,
-                  driver,
-                  shutdown_on_error,
-                  rng_seed,
-                  mode,
-                  id,
-                  driver_state,
-                  ops,
-                  ops_len,
-                  parent_pid,
-                  worker_pid,
-                  sup_id,
-                  concurrent,          %%sup
-                  measurement_driver,
-                  log_level,
-                  c_log_level,            %%b_b
-                  pre_hook,
-                  post_hook,
-                  code_paths,
-                  source_dir,
-                  antidote_pb_ips,    %%driver
-                  antidote_pb_port,
-                  antidote_types,
-                  set_size,
-                  num_updates,
-                  num_reads,
-                  measure_staleness,
-                  worker_id,
-                  time,
-                  type_dict,
-                  pb_pid,
-                  num_partitions,
-                  commit_time,
-                  pb_port,
-                  target_node}).
 
 %% Helper macro for declaring children of supervisor
 -define(CHILD(I, Type), {I, {I, start_link, []}, permanent, 5000, Type, [I]}).
@@ -77,14 +40,14 @@
 %% API functions
 %% ===================================================================
 
-start_link() ->
+start_link({SW, SD}) ->
 	io:fwrite("hello from sup:start_link\n"),
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+    supervisor:start_link({local, ?MODULE}, ?MODULE, [SW, SD]).
 
-workers() ->
+workers({SW, SD}) ->
 	%io:fwrite("hello from sup:workers before\n"),
-    [Pid || {_Id, Pid, worker, [basho_bench_worker]} <- supervisor:which_children(?MODULE)].
-    %io:fwrite("hello from sup:workers after\n").
+	[Pid || {_Id, Pid, worker, [basho_bench_worker]} <- supervisor:which_children(?MODULE)].
+	%io:fwrite("hello from sup:workers after\n").
 
 stop_child(Id) ->
     ok = supervisor:terminate_child(?MODULE, Id),
@@ -95,8 +58,7 @@ stop_child(Id) ->
 %% Supervisor callbacks
 %% ===================================================================
 
-init() -> % variable state en entree Args
-	Args = #state{},
+init([]) ->
 	io:fwrite("hello from sup:init\n"),
     %% Get the number concurrent workers we're expecting and generate child
     %% specs for each
@@ -104,9 +66,9 @@ init() -> % variable state en entree Args
     %% intentionally left in to show where worker profiling start/stop calls go.
     %% eprof:start(),
     %% eprof:start_profiling([self()]),
-    Workers = worker_specs(Args#state.concurrent, []),
+    Workers = worker_specs(basho_bench_config:get(concurrent), []),
     MeasurementDriver =
-        case Args#state.measurement_driver of
+        case basho_bench_config:get(measurement_driver, undefined) of
             undefined -> [];
             _Driver -> [?CHILD(basho_bench_measurement, worker)]
         end,

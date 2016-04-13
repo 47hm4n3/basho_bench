@@ -25,45 +25,6 @@
 
 -include("basho_bench.hrl").
 
-%% Config params
--record(state, {  keygen,              %%worker
-                  valgen,
-                  driver,
-                  shutdown_on_error,
-                  rng_seed,
-                  mode,
-                  id,
-                  driver_state,
-                  ops,
-                  ops_len,
-                  parent_pid,
-                  worker_pid,
-                  sup_id,
-                  concurrent,          %%sup
-                  measurement_driver,
-                  log_level,
-                  c_log_level,            %%b_b
-                  pre_hook,
-                  post_hook,
-                  code_paths,
-                  source_dir,
-                  duration,
-                  antidote_pb_ips,    %%driver
-                  antidote_pb_port,
-                  antidote_types,
-                  set_size,
-                  num_updates,
-                  num_reads,
-                  measure_staleness,
-                  worker_id,
-                  time,
-                  type_dict,
-                  pb_pid,
-                  num_partitions,
-                  commit_time,
-                  pb_port,
-                  target_node}).
-
 %% ====================================================================
 %% API
 %% ====================================================================
@@ -79,7 +40,6 @@ cli_options() ->
     ].
 
 main(Args) ->
-    MyArg = #state{ keygen = 1, pre_hook = 1, post_hook = 1},
     {Opts, Configs} = check_args(getopt:parse(cli_options(), Args)),
     ok = maybe_show_usage(Opts),
     ok = maybe_net_node(Opts),
@@ -96,7 +56,7 @@ main(Args) ->
     basho_bench_config:set(test_id, BenchName),
 
     application:load(lager),
-    ConsoleLagerLevel = MyArg#state.log_level,
+    ConsoleLagerLevel = basho_bench_config:get(log_level, debug),
     ErrorLog = filename:join([TestDir, "error.log"]),
     ConsoleLog = filename:join([TestDir, "console.log"]),
     CrashLog = filename:join([TestDir, "crash.log"]),
@@ -114,16 +74,16 @@ main(Args) ->
     basho_bench_config:load(Configs),
 
     %% Log level can be overriden by the config files
-    CustomLagerLevel = MyArg#state.c_log_level,
+    CustomLagerLevel = basho_bench_config:get(log_level),
     lager:set_loglevel(lager_console_backend, CustomLagerLevel),
     lager:set_loglevel(lager_file_backend, ConsoleLog, CustomLagerLevel),
 
     %% Init code path
-    add_code_paths(MyArg#state.code_paths),
+    add_code_paths(basho_bench_config:get(code_paths, [])),
 
     %% If a source directory is specified, compile and load all .erl files found
     %% there.
-    case MyArg#state.source_dir of
+    case basho_bench_config:get(source_dir, []) of
         [] ->
             ok;
         SourceDir ->
@@ -143,12 +103,12 @@ main(Args) ->
     run_pre_hook(),
 
     %% Spin up the application
-    ok = basho_bench_app:start(),
+	ok = basho_bench_app:start(),
 
     %% Pull the runtime duration from the config and sleep until that's passed OR
     %% the supervisor process exits
     Mref = erlang:monitor(process, whereis(basho_bench_sup)),
-    DurationMins = MyArg#state.duration,
+    DurationMins = basho_bench_config:get(duration),
     wait_for_stop(Mref, DurationMins).
 
 
@@ -281,11 +241,11 @@ user_friendly_bytes(Size) ->
                 {Size, bytes}, ['KB', 'MB', 'GB']).
 
 log_dimensions() ->
-    case basho_bench_keygen:dimension(MyArg#state.keygen) of
+    case basho_bench_keygen:dimension(basho_bench_config:get(key_generator)) of
         undefined ->
             ok;
         Keyspace ->
-            Valspace = basho_bench_valgen:dimension(MyArg#state.valgen, Keyspace),
+            Valspace = basho_bench_valgen:dimension(basho_bench_config:get(value_generator), Keyspace),
             {Size, Desc} = user_friendly_bytes(Valspace),
             ?INFO("Est. data size: ~.2f ~s\n", [Size, Desc])
     end.
@@ -305,10 +265,10 @@ load_source_files(Dir) ->
     filelib:fold_files(Dir, ".*.erl", false, CompileFn, ok).
 
 run_pre_hook() ->
-    run_hook(MyArg#state.pre_hook).
+    run_hook(basho_bench_config:get(pre_hook, no_op)).
 
 run_post_hook() ->
-    run_hook(MyArg#state.post_hook).
+    run_hook(basho_bench_config:get(post_hook, no_op)).
 
 run_hook({Module, Function}) ->
     Module:Function();

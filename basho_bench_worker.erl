@@ -24,73 +24,36 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/2,
+-export([start_link/3,
          run/1,
          stop/1]).
 
 %% gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
-%
-%-record(state, { id,
-%                 keygen,
-%                 valgen,
-%                 driver,
-%                 driver_state,
-%                 shutdown_on_error,
-%                 ops,
-%                 ops_len,
-%                 rng_seed,
-%                 parent_pid,
-%                 worker_pid,
-%                 sup_id}).
 
-%% Config params
--record(state, {  keygen,              %%worker
-                  valgen,
-                  driver,
-                  shutdown_on_error,
-                  rng_seed,
-                  mode,
-                  id,
-                  driver_state,
-                  ops,
-                  ops_len,
-                  parent_pid,
-                  worker_pid,
-                  sup_id,
-                  concurrent,          %%sup
-                  measurement_driver,
-                  log_level,
-                  c_log_level,            %%b_b
-                  pre_hook,
-                  post_hook,
-                  code_paths,
-                  source_dir,
-                  antidote_pb_ips,    %%driver
-                  antidote_pb_port,
-                  antidote_types,
-                  set_size,
-                  num_updates,
-                  num_reads,
-                  measure_staleness,
-                  worker_id,
-                  time,
-                  type_dict,
-                  pb_pid,
-                  num_partitions,
-                  commit_time,
-                  pb_port,
-                  target_node}).
+-record(state, { id,
+                 keygen,
+                 valgen,
+                 driver,
+                 driver_state,
+                 shutdown_on_error,
+                 ops,
+                 ops_len,
+                 rng_seed,
+                 parent_pid,
+                 worker_pid,
+                 sup_id}).
+
 -include("basho_bench.hrl").
 
 %% ====================================================================
 %% API
 %% ====================================================================
 
-start_link(SupChild, Id) ->
+start_link(SupChild, Id, StateW) ->
 	io:fwrite("hello from worker:start_link\n"),
-    gen_server:start_link(?MODULE, [SupChild, Id], []).
+    gen_server:start_link(?MODULE, [SupChild, Id, StateW], []).
 
 run(Pids) ->
     io:fwrite("hello from worker:run before\n"),
@@ -106,8 +69,7 @@ stop(Pids) ->
 %% gen_server callbacks
 %% ====================================================================
 
-init([SupChild, Id]) -> 
-    Args = #state{},
+init([SupChild, Id, StateW]) ->
 	io:fwrite("hello from worker:init\n"),
     %% Setup RNG seed for worker sub-process to use; incorporate the ID of
     %% the worker to ensure consistency in load-gen
@@ -118,37 +80,27 @@ init([SupChild, Id]) ->
     %% The RNG_SEED is static by default for replicability of key size
     %% and value size generation between test runs.
     process_flag(trap_exit, true),
-    {A1, A2, A3} = Args#state.rng_seed,
+    {A1, A2, A3} = StateW#state.rng_seed,
     RngSeed = {A1+Id, A2+Id, A3+Id},
 
     %% Pull all config settings from environment
-    Driver  = Args#state.driver,
-    Ops     = Args#state.ops,
-    ShutdownOnError = Args#state.shutdown_on_error,
+    Driver  = StateW#state.driver,
+    Ops     = StateW#state.ops,
+    ShutdownOnError = StateW#state.shutdown_on_error,
 
     %% Finally, initialize key and value generation. We pass in our ID to the
     %% initialization to enable (optional) key/value space partitioning
-    KeyGen = basho_bench_keygen:new(Args#state.keygen, Id),
-    ValGen = basho_bench_valgen:new(Args#state.valgen, Id),
+    KeyGen = basho_bench_keygen:new(StateW#state.keygen, Id),
+    ValGen = basho_bench_valgen:new(StateW#state.valgen, Id),
 
-    State = #state { keygen = KeyGen, 
-                     valgen = ValGen,
+    State = #state { id = Id, keygen = KeyGen, valgen = ValGen,
                      driver = Driver,
                      shutdown_on_error = ShutdownOnError,
-                     ops = Ops,
+                     ops = Ops, ops_len = size(Ops),
                      rng_seed = RngSeed,
-                     id = Id, 
-                     ops_len = size(Ops),
                      parent_pid = self(),
                      sup_id = SupChild},
 
-    %State_Loc = #state_loc {
-                % id = Id,
-                % driver_state = DriverState,
-                % ops_len = size(Ops),
-                % parent_pid = self(),
-                % worker_pid,
-                % sup_id = SupChild},
     %% Use a dedicated sub-process to do the actual work. The work loop may need
     %% to sleep or otherwise delay in a way that would be inappropriate and/or
     %% inefficient for a gen_server. Furthermore, we want the loop to be as
@@ -176,13 +128,13 @@ init([SupChild, Id]) ->
 
     {ok, State#state { worker_pid = WorkerPid }}.
 
-handle_call(run, _From, State ) ->
+handle_call(run, _From, State) ->
     State#state.worker_pid ! run,
-    {reply, ok }.
+    {reply, ok, State}.
 
 handle_cast(run, State) ->
     State#state.worker_pid ! run,
-    {noreply, State }.
+    {noreply, State}.
 
 handle_info({'EXIT', Pid, Reason}, State) ->
     case Reason of
@@ -190,20 +142,20 @@ handle_info({'EXIT', Pid, Reason}, State) ->
             %% Clean shutdown of the worker; spawn a process to terminate this
             %% process via the supervisor API and make sure it doesn't restart.
             spawn(fun() -> stop_worker(State#state.sup_id) end),
-            {noreply , State};
+            {noreply, State};
 
         _ ->
             ?ERROR("Worker ~p exited with ~p~n", [Pid, Reason]),
             %% Worker process exited for some other reason; stop this process
             %% as well so that everything gets restarted by the sup
-            {stop, normal }
+            {stop, normal, State}
     end.
 
 terminate(_Reason, _State) ->
     ok.
 
 code_change(_OldVsn, State, _Extra) ->
-    {ok, State }.
+    {ok, State}.
 
 
 
@@ -227,28 +179,14 @@ stop_worker(SupChild) ->
             ok
     end.
 
-%%
-%% Expand operations list into tuple suitable for weighted, random draw
-%%
-%ops_tuple() ->
-%    F =
-%        fun({OpTag, Count}) ->
-%                lists:duplicate(Count, {OpTag, OpTag});
-%           ({Label, OpTag, Count}) ->
-%                lists:duplicate(Count, {Label, OpTag})
-%        end,
-%    Ops = [F(X) || X <- basho_bench_config:get(operations, [])],
-%    list_to_tuple(lists:flatten(Ops)).
-
-
-worker_init(State ) ->
+worker_init(State) ->
     %% Trap exits from linked parent process; use this to ensure the driver
     %% gets a chance to cleanup
     process_flag(trap_exit, true),
     random:seed(State#state.rng_seed),
     worker_idle_loop(State).
 
-worker_idle_loop(State ) ->
+worker_idle_loop(State) ->
     Driver = State#state.driver,
     receive
         {init_driver, Caller} ->
@@ -263,7 +201,7 @@ worker_idle_loop(State ) ->
             end,
             worker_idle_loop(State#state { driver_state = DriverState });
         run ->
-            case State#state.mode of
+            case basho_bench_config:get(mode) of
                 max ->
                     ?INFO("Starting max worker: ~p\n", [self()]),
                     max_worker_run_loop(State);
@@ -340,7 +278,7 @@ worker_next_op(State) ->
             normal
     end.
 
-needs_shutdown(State ) ->
+needs_shutdown(State) ->
     Parent = State#state.parent_pid,
     receive
         {'EXIT', Pid, _Reason} ->
@@ -360,8 +298,8 @@ needs_shutdown(State ) ->
     end.
 
 
-max_worker_run_loop(State ) ->
-    case worker_next_op(State ) of
+max_worker_run_loop(State) ->
+    case worker_next_op(State) of
         {ok, State2} ->
             case needs_shutdown(State2) of
                 true ->
@@ -373,11 +311,11 @@ max_worker_run_loop(State ) ->
             exit(ExitReason)
     end.
 
-rate_worker_run_loop(State , Lambda) ->
+rate_worker_run_loop(State, Lambda) ->
     %% Delay between runs using exponentially distributed delays to mimic
     %% queue.
     timer:sleep(trunc(basho_bench_stats:exponential(Lambda))),
-    case worker_next_op(State ) of
+    case worker_next_op(State) of
         {ok, State2} ->
             case needs_shutdown(State2) of
                 true ->

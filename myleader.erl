@@ -5,7 +5,7 @@
 -include("basho_bench.hrl").
 
 %% API
--export([start_link/0, start/1]).
+-export([start_link/0, start/0]).
 
 %% Supervisor callbacks
 -export([init/1]).
@@ -13,67 +13,37 @@
 %% Helper macro for declaring children of supervisor
 -define(CHILD(I, Type), {I, {I, start_link, []}, permanent, 5000, Type, [I]}).
 
-%% Config params
-%-record(state, {  keygen,              %%worker
-%                  valgen,
-%                  driver,
-%                  shutdown_on_error,
-%                  rng_seed,
-%                  ops,
-%                  mode,
-%                  concurrent,          %%sup
-%                  measurement_driver,
-%                  log_level,
-%                  c_log_level,           %%b_b
-%                  pre_hook,
-%                  post_hook,
-%                  code_paths,
-%                  source_dir,
-%                  antidote_pb_ips,    %%driver
-%                  antidote_pb_port,
-%                  antidote_types,
-%                  set_size,
-%                  num_updates,
-%                  num_reads,
-%                  staleness }).
 
-%% Config params
--record(state, {  keygen,              %%worker
-                  valgen,
-                  driver,
-                  shutdown_on_error,
-                  rng_seed,
-                  mode,
-                  id,
-                  driver_state,
-                  ops,
-                  ops_len,
-                  parent_pid,
-                  worker_pid,
-                  sup_id,
-                  concurrent,          %%sup
-                  measurement_driver,
-                  log_level,
-                  c_log_level,            %%b_b
-                  pre_hook,
-                  post_hook,
-                  code_paths,
-                  source_dir,
-                  antidote_pb_ips,    %%driver
-                  antidote_pb_port,
-                  antidote_types,
-                  set_size,
-                  num_updates,
-                  num_reads,
-                  measure_staleness,
-                  worker_id,
-                  time,
-                  type_dict,
-                  pb_pid,
-                  num_partitions,
-                  commit_time,
-                  pb_port,
-                  target_node}).
+%% worker
+-record(stateW, { id,
+                 keygen,
+                 valgen,
+                 driver,
+                 driver_state,
+                 shutdown_on_error,
+                 ops,
+                 ops_len,
+                 rng_seed,
+                 parent_pid,
+                 worker_pid,
+                 sup_id}).
+
+%% driver
+-record(stateD, {ips,
+                types,
+                worker_id,
+                time,
+                type_dict,
+                pb_pid,
+                num_partitions,
+                set_size,
+                commit_time,
+                num_reads,
+                num_updates,
+                pb_port,
+                target_node,
+                measure_staleness}).
+
 %% ===================================================================
 %% API functions
 %% ===================================================================
@@ -81,18 +51,24 @@
 start_link() ->
 	io:fwrite("hello from myleader:start_link\n"),
     supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+    
 
-
-start(State) ->
-ok = mygenserv:launchWorkersSup(),
-io:fwrite("hello from leader:start 1\n"),
-ok = application:set_env(basho_bench_app, is_running, true),
-io:fwrite("hello from leader:start 2\n"),
-ok = basho_bench_stats:run(),
-io:fwrite("hello from leader:start 3\n"),
-ok = basho_bench_measurement:run(),
-io:fwrite("hello from leader:start 4\n"),
-ok = mygenserv:launchWorkers(State).
+start() ->
+io:format("Hello From myleader avant recup \n"),
+  {SW, SD} = recup(),
+io:format("Hello From myleader apres recup \n"),
+io:format("Hello From myleader avant send config \n"),
+  ok = mygenserv:set_config({SW,SD}),
+io:format("Hello From myleader apres send config \n"),
+%	ok = mygenserv:launchWorkersSup(),
+	io:fwrite("hello from leader:start 1\n"),
+	ok = application:set_env(basho_bench_app, is_running, true),
+	io:fwrite("hello from leader:start 2\n"),
+	ok = basho_bench_stats:run(),
+	io:fwrite("hello from leader:start 3\n"),
+	ok = basho_bench_measurement:run().
+%	io:fwrite("hello from leader:start 4\n"),
+%	ok = mygenserv:launchWorkers().
 
 %% ===================================================================
 %% Supervisor callbacks
@@ -100,88 +76,6 @@ ok = mygenserv:launchWorkers(State).
 
 init([]) ->
 	io:fwrite("hello from myleader:init\n"),
-  
-  %Worker params
-    %%rng_seed if dispo
-    %%driver 
-    %%shutdown_on_error
-    %%key_generator
-    %%value_generator
-    %%ops
-    %%mode max, {rate, max}, {rate, Rate}
-    RngSeed =
-      case basho_bench_config:get(rng_seed, {42, 23, 12}) of
-            {Aa, Ab, Ac} -> {Aa, Ab, Ac};
-            now -> now() %% je ne sais pas si c'est a sa place lol
-       end,
-    Driver  = basho_bench_config:get(driver),
-    ShutdownOnError = basho_bench_config:get(shutdown_on_error, false),
-    Mode    = basho_bench_config:get(mode), 
-    KeyGen = basho_bench_config:get(key_generator),
-    ValGen = basho_bench_config:get(value_generator),
-    Ops = ops_tuple(),
-
-
-  %sup params
-    %%concurrent
-    %%measurement_driver
-    Concurrent= basho_bench_config:get(concurrent),
-    MeasurementDriver = basho_bench_config:get(measurement_driver, undefined),
-
-  %b_b params
-    %%log_level
-    %%key_generator
-    %%value_generator
-    %%pre_hook
-    %%post_hook
-    %%code_paths
-    %%source_dir
-    ConsoleLagerLevel = basho_bench_config:get(log_level, debug),
-    CustomLagerLevel = basho_bench_config:get(log_level),
-    PreHook = basho_bench_config:get(pre_hook, no_op),
-    PostHook = basho_bench_config:get(post_hook, no_op),
-    CodePaths = basho_bench_config:get(code_paths, []),
-    SourceDir = basho_bench_config:get(source_dir, []),
-
-  %driver params
-    %%antidote_pb_ips
-    %%antidote_pb_port
-    %%antidote_types
-    %%set_size
-    %%num_updates
-    %%num_reads
-    %%staleness
-    IPs = basho_bench_config:get(antidote_pb_ips),
-    PbPort = basho_bench_config:get(antidote_pb_port),
-    Types  = basho_bench_config:get(antidote_types),
-    SetSize = basho_bench_config:get(set_size),
-    NumUpdates  = basho_bench_config:get(num_updates),
-    NumReads = basho_bench_config:get(num_reads),
-    MeasureStaleness = basho_bench_config:get(staleness),
-
-  State = #state {  keygen = KeyGen,
-                    valgen = ValGen,
-                    driver = Driver,
-                    shutdown_on_error = ShutdownOnError,
-                    rng_seed = RngSeed,
-                    ops = Ops,
-                    mode = Mode,
-                    concurrent = Concurrent,
-                    measurement_driver = MeasurementDriver, 
-                    log_level = ConsoleLagerLevel,
-                    pre_hook = PreHook,
-                    post_hook = PostHook,
-                    code_paths = CodePaths,
-                    source_dir = SourceDir,
-                    antidote_pb_ips = IPs,
-                    antidote_pb_port = PbPort,
-                    antidote_types = Types,
-                    set_size = SetSize,
-                    num_updates = NumUpdates,
-                    num_reads = NumReads,
-                    measure_staleness = MeasureStaleness },
-
-    io:fwrite("hello from myleader:init --> ~s \n", State#state.driver),
 
    {ok,                   % ok, supervisor here's what we want you to do
   {                       
@@ -207,10 +101,55 @@ init([]) ->
   }                        
 }. 
 
+recup() ->
+io:format("Hello From recup debut \n"),
+  {A1, A2, A3} =
+        case basho_bench_config:get(rng_seed, {42, 23, 12}) of
+            {Aa, Ab, Ac} -> {Aa, Ab, Ac};
+            now -> now()
+        end,
+    RngSeed = {A1,A2,A3},
+
+    %% Pull all config settings from environment
+    Driver  = basho_bench_config:get(driver),
+    Ops     = ops_tuple(),
+    ShutdownOnError = basho_bench_config:get(shutdown_on_error, false),
+
+    %% Finally, initialize key and value generation. We pass in our ID to the
+    %% initialization to enable (optional) key/value space partitioning
+    KeyGen = basho_bench_config:get(key_generator),
+    ValGen = basho_bench_config:get(value_generator),
+
+    StateW = #stateW { keygen = KeyGen, valgen = ValGen,
+                     driver = Driver,
+                     shutdown_on_error = ShutdownOnError,
+                     ops = Ops, ops_len = size(Ops),
+                     rng_seed = RngSeed},
+
+    IPs = basho_bench_config:get(antidote_pb_ips),
+    PbPort = basho_bench_config:get(antidote_pb_port),
+    Types  = basho_bench_config:get(antidote_types),
+    SetSize = basho_bench_config:get(set_size),
+    NumUpdates  = basho_bench_config:get(num_updates),
+    NumReads = basho_bench_config:get(num_reads),
+    NumPartitions = length(IPs),
+    MeasureStaleness = basho_bench_config:get(staleness),
+
+    StateD = #stateD {ips = IPs,
+                      types = Types,
+                      set_size = SetSize,
+                      num_partitions = NumPartitions,
+                      pb_port=PbPort,
+                      num_reads=NumReads, 
+                      num_updates=NumUpdates,
+                      measure_staleness=MeasureStaleness},
+{StateW, StateD}.
+
 %%
 %% Expand operations list into tuple suitable for weighted, random draw
 %%
 ops_tuple() ->
+  io:format("Hello From ops_tuple \n"),
     F =
         fun({OpTag, Count}) ->
                 lists:duplicate(Count, {OpTag, OpTag});
@@ -219,3 +158,5 @@ ops_tuple() ->
         end,
     Ops = [F(X) || X <- basho_bench_config:get(operations, [])],
     list_to_tuple(lists:flatten(Ops)).
+
+

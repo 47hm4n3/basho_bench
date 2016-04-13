@@ -22,9 +22,10 @@
   start_link/0,                % - starts and links the process in one step
   stop/0,                      % - stops it
   say_hello/0,                 % - prints "Hello" to stdout
-  get_count/0,	               % - returns the count state
-  launchWorkersSup/0,
-  launchWorkers/0]).
+  get_count/0,                 % - returns the count state
+  launchWorkersSup/1,
+  launchWorkers/1,
+  set_config/1]).
   
 %% ---------------------------------------------------------------------------
 %% gen_server Function Exports
@@ -37,6 +38,37 @@
   handle_info/2,               % - handles out of band messages (sent with !)
   terminate/2,                 % - is called on shut-down
   code_change/3]).             % - called to handle code changes
+
+%% worker
+-record(stateW, { id,
+                 keygen,
+                 valgen,
+                 driver,
+                 driver_state,
+                 shutdown_on_error,
+                 ops,
+                 ops_len,
+                 rng_seed,
+                 parent_pid,
+                 worker_pid,
+                 sup_id}).
+
+%% driver
+-record(stateD, {ips,
+                types,
+                worker_id,
+                time,
+                type_dict,
+                pb_pid,
+                num_partitions,
+                set_size,
+                commit_time,
+                num_reads,
+                num_updates,
+                pb_port,
+                target_node,
+                measure_staleness}).
+
 
 %% ---------------------------------------------------------------------------
 %% API Function Definitions
@@ -66,15 +98,21 @@ get_count() ->                 % Here, on the other hand, we do expect a
                                %  gen_server:call/2 hides the send/receive
                                %  logic from us. Nice.
                                
-launchWorkersSup() ->
-	io:fwrite("hello from mygenserv:launchWorkersSup before\n"),
-	gen_server:call(?SERVER, launchWorkersSup),
-	io:fwrite("hello from mygenserv:launchWorkersSup after\n").
-	
-launchWorkers() ->
-	io:fwrite("hello from mygenserv:launchWorkers before\n"),
-	gen_server:call(?SERVER, launchWorkers),
-	io:fwrite("hello from mygenserv:launchWorkers after\n").                      
+launchWorkersSup({SW, SD}) ->
+  io:fwrite("hello from mygenserv:launchWorkersSup before\n"),
+  gen_server:call(?SERVER, {launchWorkersSup,SW, SD}),
+  io:fwrite("hello from mygenserv:launchWorkersSup after\n").
+  
+launchWorkers({SW, SD}) ->
+  io:fwrite("hello from mygenserv:launchWorkers before\n"),
+  gen_server:call(?SERVER, {launchWorkers,SW, SD}),
+  io:fwrite("hello from mygenserv:launchWorkers after\n").    
+  
+set_config({SW, SD}) ->              
+  io:fwrite("hello from mygenserv:set_config before\n"),
+  gen_server:call(?SERVER, {set_config, SW, SD}),
+  io:fwrite("hello from mygenserv:set_config after\n").
+    
                            
 %% ---------------------------------------------------------------------------
 %% gen_server Function Definitions
@@ -90,24 +128,40 @@ init([]) ->                    % these are the behaviour callbacks. init/1 is
 %     #state{count=Count+1}     % and also update state
 %    }.
 
-handle_call(launchWorkersSup, _From, #state{count=Count}) -> 
-	io:fwrite("hello from mygenserv:handle_call launchWorkersSup 0\n"),
-	basho_bench_sup:start_link(),
-	io:fwrite("hello from mygenserv:handle_call launchWorkersSup 1\n"),
+handle_call({launchWorkersSup,SW, SD}, _From, #state{count=Count}) -> 
+  io:fwrite("hello from mygenserv:handle_call launchWorkersSup 0\n"),
+  basho_bench_sup:start_link({SW, SD}),
+  io:fwrite("hello from mygenserv:handle_call launchWorkersSup 1\n"),
     {reply, 
      Count,                    % here we synchronously respond with Count
      #state{count=Count+1}     % and also update state
     }; 
     
-handle_call(launchWorkers, _From, #state{count=Count}) -> 
-	io:fwrite("hello from mygenserv:handle_call launchWorkers 0\n"),
-	basho_bench_worker:run(basho_bench_sup:workers()),
-	io:fwrite("hello from mygenserv:handle_call launchWorkers 0\n"),
+handle_call({launchWorkers,SW, SD}, _From, #state{count=Count}) -> 
+  io:fwrite("hello from mygenserv:handle_call launchWorkers 0\n"),
+  basho_bench_worker:run(basho_bench_sup:workers({SW, SD})),
+  io:fwrite("hello from mygenserv:handle_call launchWorkers 0\n"),
     {reply, 
      Count,                    % here we synchronously respond with Count
      #state{count=Count+1}     % and also update state
-    }.  
+    }; 
+    
+handle_call({set_config, SW, SD}, _From, #state{count=Count}) -> 
+  io:fwrite("hello from mygenserv:handle_call set_config 0\n"),
+  %% faire le traitement de set_config sur supervisor et sur worker selon les besoins
+    io:fwrite("hello from mygenserv:launchWorkersSup before\n"),
+    gen_server:call(?SERVER, {launchWorkersSup,SW, SD}),
+    io:fwrite("hello from mygenserv:launchWorkersSup after\n"),
 
+    io:fwrite("hello from mygenserv:launchWorkers before\n"),
+    gen_server:call(?SERVER, {launchWorkers,SW, SD}),
+    io:fwrite("hello from mygenserv:launchWorkers after\n"),
+  
+  io:fwrite("hello from mygenserv:handle_call set_config 0\n"),
+    {reply, 
+     Count,                    % here we synchronously respond with Count
+     #state{count=Count+1}     % and also update state
+    }. 
 
 handle_cast(stop, State) ->    % this is the first handle_case clause that
     {stop,                     % deals with the stop atom. We instruct the
@@ -136,5 +190,3 @@ code_change(_OldVsn, State, _Extra) -> % called during release up/down-
 %% ------------------------------------------------------------------
 %% Internal Function Definitions
 %% ------------------------------------------------------------------
-
-% we don't have any.

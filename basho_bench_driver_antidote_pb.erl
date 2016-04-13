@@ -27,63 +27,28 @@
 -include("basho_bench.hrl").
 
 -define(TIMEOUT, 20000).
-%-record(state, {worker_id,
-%                time,
-%                type_dict,
-%                pb_pid,
-%		        num_partitions,
-%		        set_size,
-%                commit_time,
-%                num_reads,
-%                num_updates,
-%                pb_port,
-%                target_node,
-%                measure_staleness}).
-
-%% Config params
--record(state, {  keygen,              %%worker
-                  valgen,
-                  driver,
-                  shutdown_on_error,
-                  rng_seed,
-                  mode,
-                  id,
-                  driver_state,
-                  ops,
-                  ops_len,
-                  parent_pid,
-                  worker_pid,
-                  sup_id,
-                  concurrent,          %%sup
-                  measurement_driver,
-                  log_level,
-                  c_log_level,            %%b_b
-                  pre_hook,
-                  post_hook,
-                  code_paths,
-                  source_dir,
-                  antidote_pb_ips,    %%driver
-                  antidote_pb_port,
-                  antidote_types,
-                  set_size,
-                  num_updates,
-                  num_reads,
-                  measure_staleness,
-                  worker_id,
-                  time,
-                  type_dict,
-                  pb_pid,
-                  num_partitions,
-                  commit_time,
-                  pb_port,
-                  target_node}).
+-record(state, {ips,
+                types,
+                worker_id,
+                time,
+                type_dict,
+                pb_pid,
+		        num_partitions,
+		        set_size,
+                commit_time,
+                num_reads,
+                num_updates,
+                pb_port,
+                target_node,
+                measure_staleness}).
 
 %% ====================================================================
 %% API
 %% ====================================================================
 
-new(Id) ->
+new([Id, StateD]) ->
     %% Make sure bitcask is available
+    io:format("Hello From driver new debut \n"),
     case code:which(antidote) of
         non_existing ->
             ?FAIL_MSG("~s requires antidote to be available on code path.\n",
@@ -92,19 +57,14 @@ new(Id) ->
             ok
     end,
 
-
-    % variable state en entree
-
-    Args = #state{},
-
-    IPs = Args#state.antidote_pb_ips,
-    PbPort = Args#state.antidote_pb_port,
-    Types  = Args#state.antidote_types,
-    SetSize = Args#state.set_size,
-    NumUpdates  = Args#state.num_updates,
-    NumReads = Args#state.num_reads,
-    NumPartitions = length(IPs),
-    MeasureStaleness = Args#state.measure_staleness,
+    IPs = StateD#state.ips,
+    PbPort = StateD#state.pb_port,
+    Types  = StateD#state.types,
+    SetSize = StateD#state.set_size,
+    NumUpdates  = StateD#state.num_updates,
+    NumReads = StateD#state.num_reads,
+    NumPartitions = StateD#state.ips,
+    MeasureStaleness = StateD#state.measure_staleness,
 
     %% Choose the node using our ID as a modulus
     TargetNode = lists:nth((Id rem length(IPs)+1), IPs),
@@ -119,7 +79,8 @@ new(Id) ->
 		type_dict = TypeDict, pb_port=PbPort,
 		target_node=TargetNode, commit_time=ignore,
         num_reads=NumReads, num_updates=NumUpdates,
-        measure_staleness=MeasureStaleness}}.
+        measure_staleness=MeasureStaleness}},
+        io:format("Hello From driver new fin \n").
 
 %% @doc Read a key
 run(read, KeyGen, _ValueGen, State=#state{pb_pid = Pid, worker_id = Id,
