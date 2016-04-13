@@ -46,7 +46,7 @@
 %% API
 %% ====================================================================
 
-new([Id, StateD]) ->
+new([Id, {SW, StateD}]) ->
     %% Make sure bitcask is available
     io:format("Hello From driver new debut \n"),
     case code:which(antidote) of
@@ -79,8 +79,7 @@ new([Id, StateD]) ->
 		type_dict = TypeDict, pb_port=PbPort,
 		target_node=TargetNode, commit_time=ignore,
         num_reads=NumReads, num_updates=NumUpdates,
-        measure_staleness=MeasureStaleness}},
-        io:format("Hello From driver new fin \n").
+        measure_staleness=MeasureStaleness}}.
 
 %% @doc Read a key
 run(read, KeyGen, _ValueGen, State=#state{pb_pid = Pid, worker_id = Id,

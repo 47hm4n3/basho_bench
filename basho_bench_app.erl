@@ -56,8 +56,7 @@ start() ->
           %% Start up our application -- mark it as permanent so that the node
           %% will be killed if we go down
           io:fwrite("hello from app:start permanent\n"),
-          application:start(basho_bench, permanent),
-          io:fwrite("hello from app:start permanent after\n")
+          application:start(basho_bench, permanent)
     end.
 
 stop() ->

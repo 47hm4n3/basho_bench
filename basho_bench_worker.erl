@@ -53,7 +53,8 @@
 
 start_link(SupChild, Id, {StateW, SD}) ->
 	io:fwrite("hello from worker:start_link\n"),
-    gen_server:start_link(?MODULE, [SupChild, Id, StateW], []).
+    gen_server:start_link(?MODULE, [SupChild, Id], [{StateW, SD}]),
+    io:fwrite("hello from worker:start_link after\n").
 
 run(Pids) ->
     io:fwrite("hello from worker:run before\n"),
@@ -80,7 +81,12 @@ init([SupChild, Id, {StateW, SD}]) ->
     %% The RNG_SEED is static by default for replicability of key size
     %% and value size generation between test runs.
     process_flag(trap_exit, true),
-    {A1, A2, A3} = StateW#state.rng_seed,
+    {A1, A2, A3} = 
+        case
+        basho_bench_config:get(rng_seed,{42, 23, 12}) of
+        {Aa,Ab,Ac} -> {Aa,Ab,Ac};
+        now -> now()
+    end,
     RngSeed = {A1+Id, A2+Id, A3+Id},
 
     %% Pull all config settings from environment
@@ -179,19 +185,19 @@ stop_worker(SupChild) ->
             ok
     end.
 
-worker_init(State) ->
+worker_init({State, SW, SD}) ->
     %% Trap exits from linked parent process; use this to ensure the driver
     %% gets a chance to cleanup
     process_flag(trap_exit, true),
     random:seed(State#state.rng_seed),
-    worker_idle_loop(State).
+    worker_idle_loop({State, SW, SD}).
 
-worker_idle_loop(State) ->
+worker_idle_loop({State, SW, SD}) ->
     Driver = State#state.driver,
     receive
         {init_driver, Caller} ->
             %% Spin up the driver implementation
-            case catch(Driver:new(State#state.id)) of
+            case catch(Driver:new(State#state.id, {SW, SD})) of
                 {ok, DriverState} ->
                     Caller ! driver_ready,
                     ok;
@@ -199,7 +205,7 @@ worker_idle_loop(State) ->
                     DriverState = undefined, % Make erlc happy
                     ?FAIL_MSG("Failed to initialize driver ~p: ~p\n", [Driver, Error])
             end,
-            worker_idle_loop(State#state { driver_state = DriverState });
+            worker_idle_loop({State#state { driver_state = DriverState }, SW, SD});
         run ->
             case basho_bench_config:get(mode) of
                 max ->
