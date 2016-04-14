@@ -23,7 +23,7 @@
   stop/0,                      % - stops it
   say_hello/0,                 % - prints "Hello" to stdout
   get_count/0,                 % - returns the count state
-  launchWorkersSup/0,
+  launchWorkersSup/1,
   launchWorkers/1%,
   %set_config/1
   ]).
@@ -52,7 +52,8 @@
                  rng_seed,
                  parent_pid,
                  worker_pid,
-                 sup_id}).
+                 sup_id,
+                 mode}).
 
 %% driver
 -record(stateD, {ips,
@@ -70,6 +71,9 @@
                 target_node,
                 measure_staleness}).
 
+%% sup
+-record(stateS, { workers,
+                  measurements}).
 
 %% ---------------------------------------------------------------------------
 %% API Function Definitions
@@ -99,9 +103,9 @@ get_count() ->                 % Here, on the other hand, we do expect a
                                %  gen_server:call/2 hides the send/receive
                                %  logic from us. Nice.
                                
-launchWorkersSup() ->
+launchWorkersSup(SS) ->
   io:fwrite("hello from mygenserv:launchWorkersSup before\n"),
-  gen_server:call(?SERVER, launchWorkersSup),
+  gen_server:call(?SERVER, {launchWorkersSup, SS}),
   io:fwrite("hello from mygenserv:launchWorkersSup after\n").
   
 launchWorkers({SW, SD}) ->
@@ -129,9 +133,9 @@ init([]) ->                    % these are the behaviour callbacks. init/1 is
 %     #state{count=Count+1}     % and also update state
 %    }.
 
-handle_call(launchWorkersSup, _From, #state{count=Count}) -> 
+handle_call({launchWorkersSup, SS}, _From, #state{count=Count}) -> 
   io:fwrite("hello from mygenserv:handle_call launchWorkersSup 0 \n"),
-  basho_bench_sup:start_link(),
+  basho_bench_sup:start_link(SS),
   io:fwrite("hello from mygenserv:handle_call launchWorkersSup 1\n"),
     {reply, 
      Count,                    % here we synchronously respond with Count

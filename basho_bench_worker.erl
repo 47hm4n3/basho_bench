@@ -43,7 +43,8 @@
                  rng_seed,
                  parent_pid,
                  worker_pid,
-                 sup_id}).
+                 sup_id,
+                 mode}).
 
 -include("basho_bench.hrl").
 
@@ -81,18 +82,15 @@ init([SupChild, Id, {StateW, SD}]) ->
     %% The RNG_SEED is static by default for replicability of key size
     %% and value size generation between test runs.
     process_flag(trap_exit, true),
-    {A1, A2, A3} = 
-        case
-        basho_bench_config:get(rng_seed,{42, 23, 12}) of
-        {Aa,Ab,Ac} -> {Aa,Ab,Ac};
-        now -> now()
-    end,
+    {A1, A2, A3} = StateW#state.rng_seed,
     RngSeed = {A1+Id, A2+Id, A3+Id},
 
     %% Pull all config settings from environment
-    Driver  = basho_bench_config:get(driver),
-    Ops     = ops_tuple(),
-    ShutdownOnError = basho_bench_config:get(shutdown_on_error,false),
+    Driver  = StateW#state.driver,
+    Ops     = StateW#state.ops,
+    ShutdownOnError = StateW#state.shutdown_on_error,
+    Mode = StateW#state.mode,
+
 
     %% Finally, initialize key and value generation. We pass in our ID to the
     %% initialization to enable (optional) key/value space partitioning
@@ -105,7 +103,8 @@ init([SupChild, Id, {StateW, SD}]) ->
                      ops = Ops, ops_len = size(Ops),
                      rng_seed = RngSeed,
                      parent_pid = self(),
-                     sup_id = SupChild},
+                     sup_id = SupChild,
+                     mode = Mode},
 
     %% Use a dedicated sub-process to do the actual work. The work loop may need
     %% to sleep or otherwise delay in a way that would be inappropriate and/or
@@ -207,7 +206,7 @@ worker_idle_loop({State, SW, SD}) ->
             end,
             worker_idle_loop({State#state { driver_state = DriverState }, SW, SD});
         run ->
-            case basho_bench_config:get(mode) of
+            case State#state.mode of
                 max ->
                     ?INFO("Starting max worker: ~p\n", [self()]),
                     max_worker_run_loop(State);
@@ -332,16 +331,3 @@ rate_worker_run_loop(State, Lambda) ->
         ExitReason ->
             exit(ExitReason)
     end.
-%%
-%% Expand operations list into tuple suitable for weighted, random draw
-%%
-ops_tuple() ->
-  io:format("Hello From ops_tuple \n"),
-    F =
-        fun({OpTag, Count}) ->
-                lists:duplicate(Count, {OpTag, OpTag});
-           ({Label, OpTag, Count}) ->
-                lists:duplicate(Count, {Label, OpTag})
-        end,
-    Ops = [F(X) || X <- basho_bench_config:get(operations, [])],
-    list_to_tuple(lists:flatten(Ops)).

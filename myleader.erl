@@ -26,7 +26,8 @@
                  rng_seed,
                  parent_pid,
                  worker_pid,
-                 sup_id}).
+                 sup_id,
+                 mode}).
 
 %% driver
 -record(stateD, {ips,
@@ -44,6 +45,10 @@
                 target_node,
                 measure_staleness}).
 
+%% sup
+-record(stateS, { workers,
+                  measurements}).
+
 %% ===================================================================
 %% API functions
 %% ===================================================================
@@ -55,12 +60,12 @@ start_link() ->
 
 start() ->
 io:format("Hello From myleader avant recup \n"),
-  {SW, SD} = recup(),
+  {SW, SD, SS} = recup(),
 io:format("Hello From myleader apres recup \n"),
 %  io:format("Hello From myleader avant set_config \n"),
 %  ok = mygenserv:set_config({SW,SD}),
 %  io:format("Hello From myleader apres set_config \n"),
-	ok = mygenserv:launchWorkersSup(),
+	ok = mygenserv:launchWorkersSup(SS),
 	io:fwrite("hello from leader:start 1\n"),
 	ok = application:set_env(basho_bench_app, is_running, true),
 	io:fwrite("hello from leader:start 2\n"),
@@ -68,7 +73,7 @@ io:format("Hello From myleader apres recup \n"),
 	io:fwrite("hello from leader:start 3\n"),
 	ok = basho_bench_measurement:run(),
 	io:fwrite("hello from leader:start 4\n"),
-	ok = mygenserv:launchWorkers({SW,SD}).
+	ok = mygenserv:launchWorkers({SW, SD}).
 
 %% ===================================================================
 %% Supervisor callbacks
@@ -119,12 +124,16 @@ io:format("Hello From recup debut \n"),
     %% initialization to enable (optional) key/value space partitioning
     KeyGen = basho_bench_config:get(key_generator),
     ValGen = basho_bench_config:get(value_generator),
+    Mode = basho_bench_config:get(mode),
 
     StateW = #stateW { keygen = KeyGen, valgen = ValGen,
                      driver = Driver,
                      shutdown_on_error = ShutdownOnError,
                      ops = Ops, ops_len = size(Ops),
-                     rng_seed = RngSeed},
+                     rng_seed = RngSeed,
+                     mode = Mode},
+
+
 
     IPs = basho_bench_config:get(antidote_pb_ips),
     PbPort = basho_bench_config:get(antidote_pb_port),
@@ -143,7 +152,14 @@ io:format("Hello From recup debut \n"),
                       num_reads=NumReads, 
                       num_updates=NumUpdates,
                       measure_staleness=MeasureStaleness},
-{StateW, StateD}.
+
+    Workers = basho_bench_config:get(concurrent),
+    MeasurementDriver = basho_bench_config:get(measurement_driver, undefined),
+
+    StateS = #stateS {workers = Workers,
+                      measurements = MeasurementDriver},
+
+{StateW, StateD, StateS}.
 
 %%
 %% Expand operations list into tuple suitable for weighted, random draw

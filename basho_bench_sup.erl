@@ -24,7 +24,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/0,
+-export([start_link/1,
          workers/1,
          stop_child/1]).
 
@@ -36,18 +36,53 @@
 %% Helper macro for declaring children of supervisor
 -define(CHILD(I, Type), {I, {I, start_link, []}, permanent, 5000, Type, [I]}).
 
+%% worker
+-record(stateW, { id,
+                 keygen,
+                 valgen,
+                 driver,
+                 driver_state,
+                 shutdown_on_error,
+                 ops,
+                 ops_len,
+                 rng_seed,
+                 parent_pid,
+                 worker_pid,
+                 sup_id,
+                 mode}).
+
+%% driver
+-record(stateD, {ips,
+                types,
+                worker_id,
+                time,
+                type_dict,
+                pb_pid,
+                num_partitions,
+                set_size,
+                commit_time,
+                num_reads,
+                num_updates,
+                pb_port,
+                target_node,
+                measure_staleness}).
+
+%% sup
+-record(stateS, { workers,
+                  measurements}).
+
 %% ===================================================================
 %% API functions
 %% ===================================================================
 
-start_link() ->
+start_link(SS) ->
 	io:fwrite("hello from sup:start_link\n"),
-    supervisor:start_link({local, ?MODULE}, ?MODULE, []),
+    supervisor:start_link({local, ?MODULE}, ?MODULE, [SS]),
     io:format("sup:start_link() end\n").
 
 workers({SW, SD}) ->
 	io:fwrite("hello from sup:workers before\n"),
-	[Pid || {_Id, Pid, worker, [basho_bench_worker]} <- supervisor:which_children(?MODULE), [{SW, SD}]],
+	[Pid || {_Id, Pid, worker, [basho_bench_worker]} <- supervisor:which_children(?MODULE)],
 	io:fwrite("hello from sup:workers after\n").
 
 stop_child(Id) ->
@@ -59,7 +94,7 @@ stop_child(Id) ->
 %% Supervisor callbacks
 %% ===================================================================
 
-init([]) ->
+init([SS]) ->
 	io:fwrite("hello from sup:init\n"),
     %% Get the number concurrent workers we're expecting and generate child
     %% specs for each
@@ -67,9 +102,9 @@ init([]) ->
     %% intentionally left in to show where worker profiling start/stop calls go.
     %% eprof:start(),
     %% eprof:start_profiling([self()]),
-    Workers = worker_specs(basho_bench_config:get(concurrent), []),
+    Workers = worker_specs(SS#stateS.workers, []),
     MeasurementDriver =
-        case basho_bench_config:get(measurement_driver, undefined) of
+        case SS#stateS.measurements of
             undefined -> [];
             _Driver -> [?CHILD(basho_bench_measurement, worker)]
         end,
@@ -77,8 +112,9 @@ init([]) ->
     {ok, {{one_for_one, 5, 10},
         [?CHILD(basho_bench_stats, worker)] ++
         Workers ++
-        MeasurementDriver
-        }}.
+        MeasurementDriver,
+        io:fwrite("==============1\n")
+    }}.
 
 %% ===================================================================
 %% Internal functions
