@@ -112,8 +112,8 @@ init([SS]) ->
     {ok, {{one_for_one, 5, 10},
         [?CHILD(basho_bench_stats, worker)] ++
         Workers ++
-        MeasurementDriver,
-        io:fwrite("==============1\n")
+        MeasurementDriver
+        %io:fwrite("==============1\n")
     }}.
 
 %% ===================================================================
