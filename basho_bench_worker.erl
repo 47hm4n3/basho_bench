@@ -72,12 +72,12 @@
 %% API
 %% ====================================================================
 
-start_link(SupChild, Id, {StateW, SD}) ->
+start_link(SupChild, Id, {SW, SD}) ->
 	io:fwrite("hello from worker:start_link\n"),
-    gen_server:start_link(?MODULE, [SupChild, Id], [{StateW, SD}]),
+    gen_server:start_link(?MODULE, [SupChild, Id], [{SW, SD}]),
     io:fwrite("hello from worker:start_link after\n").
 
-run(Pids) ->
+run({Pids, {SW, SD}}) ->
     io:fwrite("hello from worker:run before\n"),
     [ok = gen_server:call(Pid, run) || Pid <- Pids],
     io:fwrite("hello from worker:run after\n"),

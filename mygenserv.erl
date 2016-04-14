@@ -144,7 +144,7 @@ handle_call({launchWorkersSup, SS}, _From, #state{count=Count}) ->
     
 handle_call({launchWorkers, {SW, SD}}, _From, #state{count=Count}) -> 
   io:fwrite("hello from mygenserv:handle_call launchWorkers 0\n"),
-  basho_bench_worker:run(basho_bench_sup:workers({SW, SD})),
+  basho_bench_worker:run({basho_bench_sup:workers(), {SW, SD}}),
   io:fwrite("hello from mygenserv:handle_call launchWorkers 1\n"),
     {reply, 
      Count,                    % here we synchronously respond with Count

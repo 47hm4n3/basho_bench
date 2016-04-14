@@ -25,7 +25,7 @@
 
 %% API
 -export([start_link/1,
-         workers/1,
+         workers/0,
          stop_child/1]).
 
 %% Supervisor callbacks
@@ -80,7 +80,7 @@ start_link(SS) ->
     supervisor:start_link({local, ?MODULE}, ?MODULE, [SS]),
     io:format("sup:start_link() end\n").
 
-workers({SW, SD}) ->
+workers() ->
 	io:fwrite("hello from sup:workers before\n"),
 	[Pid || {_Id, Pid, worker, [basho_bench_worker]} <- supervisor:which_children(?MODULE)],
 	io:fwrite("hello from sup:workers after\n").
