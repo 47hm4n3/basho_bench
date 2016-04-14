@@ -90,9 +90,9 @@ init([SupChild, Id, {StateW, SD}]) ->
     RngSeed = {A1+Id, A2+Id, A3+Id},
 
     %% Pull all config settings from environment
-    Driver  = StateW#state.driver,
-    Ops     = StateW#state.ops,
-    ShutdownOnError = StateW#state.shutdown_on_error,
+    Driver  = basho_bench_config:get(driver),
+    Ops     = ops_tuple(),
+    ShutdownOnError = basho_bench_config:get(shutdown_on_error,false),
 
     %% Finally, initialize key and value generation. We pass in our ID to the
     %% initialization to enable (optional) key/value space partitioning
@@ -332,3 +332,16 @@ rate_worker_run_loop(State, Lambda) ->
         ExitReason ->
             exit(ExitReason)
     end.
+%%
+%% Expand operations list into tuple suitable for weighted, random draw
+%%
+ops_tuple() ->
+  io:format("Hello From ops_tuple \n"),
+    F =
+        fun({OpTag, Count}) ->
+                lists:duplicate(Count, {OpTag, OpTag});
+           ({Label, OpTag, Count}) ->
+                lists:duplicate(Count, {Label, OpTag})
+        end,
+    Ops = [F(X) || X <- basho_bench_config:get(operations, [])],
+    list_to_tuple(lists:flatten(Ops)).

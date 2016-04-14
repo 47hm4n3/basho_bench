@@ -24,7 +24,7 @@
 -behaviour(supervisor).
 
 %% API
--export([start_link/1,
+-export([start_link/0,
          workers/1,
          stop_child/1]).
 
@@ -40,14 +40,14 @@
 %% API functions
 %% ===================================================================
 
-start_link({SW, SD}) ->
+start_link() ->
 	io:fwrite("hello from sup:start_link\n"),
-    supervisor:start_link({local, ?MODULE}, ?MODULE, [SW, SD]),
+    supervisor:start_link({local, ?MODULE}, ?MODULE, []),
     io:format("sup:start_link() end\n").
 
 workers({SW, SD}) ->
 	io:fwrite("hello from sup:workers before\n"),
-	[Pid || {_Id, Pid, worker, [basho_bench_worker]} <- supervisor:which_children(?MODULE)],
+	[Pid || {_Id, Pid, worker, [basho_bench_worker]} <- supervisor:which_children(?MODULE), [{SW, SD}]],
 	io:fwrite("hello from sup:workers after\n").
 
 stop_child(Id) ->
@@ -59,7 +59,7 @@ stop_child(Id) ->
 %% Supervisor callbacks
 %% ===================================================================
 
-init([SW, SD]) ->
+init([]) ->
 	io:fwrite("hello from sup:init\n"),
     %% Get the number concurrent workers we're expecting and generate child
     %% specs for each
