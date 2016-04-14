@@ -46,7 +46,7 @@
 %% API
 %% ====================================================================
 
-new([Id, {SW, StateD}]) ->
+new([Id, StateD]) ->
     %% Make sure bitcask is available
     io:format("Hello From driver new debut \n"),
     case code:which(antidote) of

@@ -76,7 +76,7 @@
 %% ===================================================================
 
 start_link(SS) ->
-	io:fwrite("hello from sup:start_link\n"),
+	io:fwrite("hello from sup:start_link()\n"),
     supervisor:start_link({local, ?MODULE}, ?MODULE, [SS]),
     io:format("sup:start_link() end\n").
 

@@ -46,6 +46,26 @@
                  sup_id,
                  mode}).
 
+%% driver
+-record(stateD, {ips,
+                types,
+                worker_id,
+                time,
+                type_dict,
+                pb_pid,
+                num_partitions,
+                set_size,
+                commit_time,
+                num_reads,
+                num_updates,
+                pb_port,
+                target_node,
+                measure_staleness}).
+
+%% sup
+-record(stateS, { workers,
+                  measurements}).
+
 -include("basho_bench.hrl").
 
 %% ====================================================================
@@ -114,7 +134,7 @@ init([SupChild, Id, {StateW, SD}]) ->
     %%
     %% Link the worker and the sub-process to ensure that if either exits, the
     %% other goes with it.
-    WorkerPid = spawn_link(fun() -> worker_init(State) end),
+    WorkerPid = spawn_link(fun() -> worker_init({State, SD}) end),
     WorkerPid ! {init_driver, self()},
     receive
         driver_ready ->
@@ -184,19 +204,19 @@ stop_worker(SupChild) ->
             ok
     end.
 
-worker_init({State, SW, SD}) ->
+worker_init({State, SD}) ->
     %% Trap exits from linked parent process; use this to ensure the driver
     %% gets a chance to cleanup
     process_flag(trap_exit, true),
     random:seed(State#state.rng_seed),
-    worker_idle_loop({State, SW, SD}).
+    worker_idle_loop({State, SD}).
 
-worker_idle_loop({State, SW, SD}) ->
+worker_idle_loop({State, SD}) ->
     Driver = State#state.driver,
     receive
         {init_driver, Caller} ->
             %% Spin up the driver implementation
-            case catch(Driver:new(State#state.id, {SW, SD})) of
+            case catch(Driver:new({State#state.id, SD})) of
                 {ok, DriverState} ->
                     Caller ! driver_ready,
                     ok;
@@ -204,7 +224,7 @@ worker_idle_loop({State, SW, SD}) ->
                     DriverState = undefined, % Make erlc happy
                     ?FAIL_MSG("Failed to initialize driver ~p: ~p\n", [Driver, Error])
             end,
-            worker_idle_loop({State#state { driver_state = DriverState }, SW, SD});
+            worker_idle_loop({State#state { driver_state = DriverState }, SD});
         run ->
             case State#state.mode of
                 max ->
