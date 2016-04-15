@@ -75,10 +75,9 @@
 %% API functions
 %% ===================================================================
 
-start_link(SS) ->
+start_link({SW, SD, SS}) ->
 	io:fwrite("hello from sup:start_link()\n"),
-    supervisor:start_link({local, ?MODULE}, ?MODULE, [SS]),
-    io:format("sup:start_link() end\n").
+    supervisor:start_link({local, ?MODULE}, ?MODULE, [{SW, SD, SS}]).
 
 workers() ->
 	io:fwrite("hello from sup:workers before\n"),
@@ -94,7 +93,7 @@ stop_child(Id) ->
 %% Supervisor callbacks
 %% ===================================================================
 
-init([SS]) ->
+init([{SW, SD, SS}]) ->
 	io:fwrite("hello from sup:init\n"),
     %% Get the number concurrent workers we're expecting and generate child
     %% specs for each
@@ -102,7 +101,7 @@ init([SS]) ->
     %% intentionally left in to show where worker profiling start/stop calls go.
     %% eprof:start(),
     %% eprof:start_profiling([self()]),
-    Workers = worker_specs(SS#stateS.workers, []),
+    Workers = worker_specs(SS#stateS.workers, [],{SW, SD}),
     MeasurementDriver =
         case SS#stateS.measurements of
             undefined -> [];
@@ -113,18 +112,17 @@ init([SS]) ->
         [?CHILD(basho_bench_stats, worker)] ++
         Workers ++
         MeasurementDriver
-        %io:fwrite("==============1\n")
     }}.
 
 %% ===================================================================
 %% Internal functions
 %% ===================================================================
 
-worker_specs(0, Acc) ->
+worker_specs(0, Acc, {SW,SD}) ->
     Acc;
-worker_specs(Count, Acc) ->
+worker_specs(Count, Acc, {SW, SD}) ->
 	io:fwrite("hello from sup:worker_specs\n"),
     Id = list_to_atom(lists:concat(['basho_bench_worker_', Count])),
-    Spec = {Id, {basho_bench_worker, start_link, [Id, Count]},
+    Spec = {Id, {basho_bench_worker, start_link, [Id, Count, {SW, SD}]},
             permanent, 5000, worker, [basho_bench_worker]},
-    worker_specs(Count-1, [Spec | Acc]).
+    worker_specs(Count-1, [Spec | Acc], {SW, SD}).

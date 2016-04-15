@@ -32,7 +32,8 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
--record(state, { id,
+%% worker
+-record(stateW, { id,
                  keygen,
                  valgen,
                  driver,
@@ -74,10 +75,9 @@
 
 start_link(SupChild, Id, {SW, SD}) ->
 	io:fwrite("hello from worker:start_link\n"),
-    gen_server:start_link(?MODULE, [SupChild, Id], [{SW, SD}]),
-    io:fwrite("hello from worker:start_link after\n").
+    gen_server:start_link(?MODULE, [SupChild, Id, {SW, SD}], []).
 
-run({Pids, {SW, SD}}) ->
+run(Pids) ->
     io:fwrite("hello from worker:run before\n"),
     [ok = gen_server:call(Pid, run) || Pid <- Pids],
     io:fwrite("hello from worker:run after\n"),
@@ -92,7 +92,7 @@ stop(Pids) ->
 %% ====================================================================
 
 init([SupChild, Id, {StateW, SD}]) ->
-	io:fwrite("hello from worker:init\n"),
+	io:format("\nhello from worker:init\n"),
     %% Setup RNG seed for worker sub-process to use; incorporate the ID of
     %% the worker to ensure consistency in load-gen
     %%
@@ -102,25 +102,28 @@ init([SupChild, Id, {StateW, SD}]) ->
     %% The RNG_SEED is static by default for replicability of key size
     %% and value size generation between test runs.
     process_flag(trap_exit, true),
-    {A1, A2, A3} = StateW#state.rng_seed,
+    {A1, A2, A3} = StateW#stateW.rng_seed,
     RngSeed = {A1+Id, A2+Id, A3+Id},
 
     %% Pull all config settings from environment
-    Driver  = StateW#state.driver,
-    Ops     = StateW#state.ops,
-    ShutdownOnError = StateW#state.shutdown_on_error,
-    Mode = StateW#state.mode,
+    Driver  = StateW#stateW.driver,
+    Ops     = StateW#stateW.ops,
+    ShutdownOnError = StateW#stateW.shutdown_on_error,
+    Mode = StateW#stateW.mode,
 
 
     %% Finally, initialize key and value generation. We pass in our ID to the
     %% initialization to enable (optional) key/value space partitioning
-    KeyGen = basho_bench_keygen:new(StateW#state.keygen, Id),
-    ValGen = basho_bench_valgen:new(StateW#state.valgen, Id),
+    KeyGen = basho_bench_keygen:new(StateW#stateW.keygen, Id),
+    ValGen = basho_bench_valgen:new(StateW#stateW.valgen, Id),
 
-    State = #state { id = Id, keygen = KeyGen, valgen = ValGen,
+    State = #stateW { id = Id, 
+                     keygen = KeyGen, 
+                     valgen = ValGen,
                      driver = Driver,
                      shutdown_on_error = ShutdownOnError,
-                     ops = Ops, ops_len = size(Ops),
+                     ops = Ops, 
+                     ops_len = size(Ops),
                      rng_seed = RngSeed,
                      parent_pid = self(),
                      sup_id = SupChild,
@@ -151,14 +154,14 @@ init([SupChild, Id, {StateW, SD}]) ->
             ok
     end,
 
-    {ok, State#state { worker_pid = WorkerPid }}.
+    {ok, State#stateW { worker_pid = WorkerPid }}.
 
 handle_call(run, _From, State) ->
-    State#state.worker_pid ! run,
+    State#stateW.worker_pid ! run,
     {reply, ok, State}.
 
 handle_cast(run, State) ->
-    State#state.worker_pid ! run,
+    State#stateW.worker_pid ! run,
     {noreply, State}.
 
 handle_info({'EXIT', Pid, Reason}, State) ->
@@ -166,7 +169,7 @@ handle_info({'EXIT', Pid, Reason}, State) ->
         normal ->
             %% Clean shutdown of the worker; spawn a process to terminate this
             %% process via the supervisor API and make sure it doesn't restart.
-            spawn(fun() -> stop_worker(State#state.sup_id) end),
+            spawn(fun() -> stop_worker(State#stateW.sup_id) end),
             {noreply, State};
 
         _ ->
@@ -208,15 +211,15 @@ worker_init({State, SD}) ->
     %% Trap exits from linked parent process; use this to ensure the driver
     %% gets a chance to cleanup
     process_flag(trap_exit, true),
-    random:seed(State#state.rng_seed),
+    random:seed(State#stateW.rng_seed),
     worker_idle_loop({State, SD}).
 
 worker_idle_loop({State, SD}) ->
-    Driver = State#state.driver,
+    Driver = State#stateW.driver,
     receive
         {init_driver, Caller} ->
             %% Spin up the driver implementation
-            case catch(Driver:new({State#state.id, SD})) of
+            case catch(Driver:new({State#stateW.id, SD})) of
                 {ok, DriverState} ->
                     Caller ! driver_ready,
                     ok;
@@ -224,9 +227,9 @@ worker_idle_loop({State, SD}) ->
                     DriverState = undefined, % Make erlc happy
                     ?FAIL_MSG("Failed to initialize driver ~p: ~p\n", [Driver, Error])
             end,
-            worker_idle_loop({State#state { driver_state = DriverState }, SD});
+            worker_idle_loop({State#stateW { driver_state = DriverState }, SD});
         run ->
-            case State#state.mode of
+            case State#stateW.mode of
                 max ->
                     ?INFO("Starting max worker: ~p\n", [self()]),
                     max_worker_run_loop(State);
@@ -243,10 +246,10 @@ worker_idle_loop({State, SD}) ->
     end.
 
 worker_next_op2(State, OpTag) ->
-   catch (State#state.driver):run(OpTag, State#state.keygen, State#state.valgen,
-                                  State#state.driver_state).
+   catch (State#stateW.driver):run(OpTag, State#stateW.keygen, State#stateW.valgen,
+                                  State#stateW.driver_state).
 worker_next_op(State) ->
-    Next = element(random:uniform(State#state.ops_len), State#state.ops),
+    Next = element(random:uniform(State#stateW.ops_len), State#stateW.ops),
     {_Label, OpTag} = Next,
     Start = os:timestamp(),
     Result = worker_next_op2(State, OpTag),
@@ -254,18 +257,18 @@ worker_next_op(State) ->
     case Result of
         {Res, DriverState} when Res == ok orelse element(1, Res) == ok ->
             basho_bench_stats:op_complete(Next, Res, ElapsedUs),
-            {ok, State#state { driver_state = DriverState}};
+            {ok, State#stateW { driver_state = DriverState}};
 
         {Res, DriverState} when Res == silent orelse element(1, Res) == silent ->
-            {ok, State#state { driver_state = DriverState}};
+            {ok, State#stateW { driver_state = DriverState}};
 
         {error, Reason, DriverState} ->
             %% Driver encountered a recoverable error
             basho_bench_stats:op_complete(Next, {error, Reason}, ElapsedUs),
-            State#state.shutdown_on_error andalso
+            State#stateW.shutdown_on_error andalso
                 erlang:send_after(500, basho_bench,
                                   {shutdown, "Shutdown on errors requested", 1}),
-            {ok, State#state { driver_state = DriverState}};
+            {ok, State#stateW { driver_state = DriverState}};
 
         {'EXIT', Reason} ->
             %% Driver crashed, generate a crash error and terminate. This will take down
@@ -273,10 +276,10 @@ worker_next_op(State) ->
             basho_bench_stats:op_complete(Next, {error, crash}, ElapsedUs),
 
             %% Give the driver a chance to cleanup
-            (catch (State#state.driver):terminate({'EXIT', Reason}, State#state.driver_state)),
+            (catch (State#stateW.driver):terminate({'EXIT', Reason}, State#stateW.driver_state)),
 
-            ?DEBUG("Driver ~p crashed: ~p\n", [State#state.driver, Reason]),
-            case State#state.shutdown_on_error of
+            ?DEBUG("Driver ~p crashed: ~p\n", [State#stateW.driver, Reason]),
+            case State#stateW.shutdown_on_error of
                 true ->
                     %% Yes, I know this is weird, but currently this
                     %% is how you tell Basho Bench to return a
@@ -295,23 +298,23 @@ worker_next_op(State) ->
         {stop, Reason} ->
             %% Driver (or something within it) has requested that this worker
             %% terminate cleanly.
-            ?INFO("Driver ~p (~p) has requested stop: ~p\n", [State#state.driver, self(), Reason]),
+            ?INFO("Driver ~p (~p) has requested stop: ~p\n", [State#stateW.driver, self(), Reason]),
 
             %% Give the driver a chance to cleanup
-            (catch (State#state.driver):terminate(normal, State#state.driver_state)),
+            (catch (State#stateW.driver):terminate(normal, State#stateW.driver_state)),
 
             normal
     end.
 
 needs_shutdown(State) ->
-    Parent = State#state.parent_pid,
+    Parent = State#stateW.parent_pid,
     receive
         {'EXIT', Pid, _Reason} ->
             case Pid of
                 Parent ->
                     %% Give the driver a chance to cleanup
-                    (catch (State#state.driver):terminate(normal,
-                                                          State#state.driver_state)),
+                    (catch (State#stateW.driver):terminate(normal,
+                                                          State#stateW.driver_state)),
                     true;
                 _Else ->
                     %% catch this so that selective recieve doesn't kill us when running

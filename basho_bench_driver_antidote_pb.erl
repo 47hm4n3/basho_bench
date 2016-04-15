@@ -27,7 +27,7 @@
 -include("basho_bench.hrl").
 
 -define(TIMEOUT, 20000).
--record(state, {ips,
+-record(stateD, {ips,
                 types,
                 worker_id,
                 time,
@@ -46,7 +46,7 @@
 %% API
 %% ====================================================================
 
-new([Id, StateD]) ->
+new({Id, StateD}) ->
     %% Make sure bitcask is available
     io:format("Hello From driver new debut \n"),
     case code:which(antidote) of
@@ -57,14 +57,16 @@ new([Id, StateD]) ->
             ok
     end,
 
-    IPs = StateD#state.ips,
-    PbPort = StateD#state.pb_port,
-    Types  = StateD#state.types,
-    SetSize = StateD#state.set_size,
-    NumUpdates  = StateD#state.num_updates,
-    NumReads = StateD#state.num_reads,
-    NumPartitions = StateD#state.ips,
-    MeasureStaleness = StateD#state.measure_staleness,
+    %IPs = StateD#stateD.ips,
+    %PbPort = StateD#stateD.pb_port,
+    IPs = basho_bench_config:get(antidote_pb_ips),
+    PbPort = basho_bench_config:get(antidote_pb_port),
+    Types  = StateD#stateD.types,
+    SetSize = StateD#stateD.set_size,
+    NumUpdates  = StateD#stateD.num_updates,
+    NumReads = StateD#stateD.num_reads,
+    NumPartitions = StateD#stateD.ips,
+    MeasureStaleness = StateD#stateD.measure_staleness,
 
     %% Choose the node using our ID as a modulus
     TargetNode = lists:nth((Id rem length(IPs)+1), IPs),
@@ -72,7 +74,7 @@ new([Id, StateD]) ->
 
     {ok, Pid} = antidotec_pb_socket:start_link(TargetNode, PbPort),
     TypeDict = dict:from_list(Types),
-    {ok, #state{time={1,1,1}, worker_id=Id,
+    {ok, #stateD{time={1,1,1}, worker_id=Id,
 		pb_pid = Pid,
 		set_size = SetSize,
 		num_partitions = NumPartitions,
@@ -82,7 +84,7 @@ new([Id, StateD]) ->
         measure_staleness=MeasureStaleness}}.
 
 %% @doc Read a key
-run(read, KeyGen, _ValueGen, State=#state{pb_pid = Pid, worker_id = Id,
+run(read, KeyGen, _ValueGen, State=#stateD{pb_pid = Pid, worker_id = Id,
                                           pb_port=_Port, target_node=_Node,
                                           type_dict=_TypeDict, commit_time=OldCommitTime,
                                           measure_staleness=MS}) ->
@@ -100,7 +102,7 @@ run(read, KeyGen, _ValueGen, State=#state{pb_pid = Pid, worker_id = Id,
 			{ok, CT} ->
                             report_staleness(MS, CT, StartTime),
                 NewCT = binary_to_term(CT),
-			    {ok, State#state{commit_time=NewCT}};
+			    {ok, State#stateD{commit_time=NewCT}};
 			_ ->
 			    lager:info("Error read1 on client ~p",[Id]),
 			    {error, timeout, State}
@@ -115,7 +117,7 @@ run(read, KeyGen, _ValueGen, State=#state{pb_pid = Pid, worker_id = Id,
     end;
 
 %% @doc Read a key
-run(read_txn, _KeyGen, _ValueGen, State=#state{pb_pid = Pid, worker_id = Id, pb_port=_Port, target_node=_Node, num_reads=NumReads,
+run(read_txn, _KeyGen, _ValueGen, State=#stateD{pb_pid = Pid, worker_id = Id, pb_port=_Port, target_node=_Node, num_reads=NumReads,
         commit_time=OldCommitTime}) ->
     IntKeys = k_unique_numes(NumReads, 1000),
     BoundObjects = [{list_to_binary(integer_to_list(K)), riak_dt_lwwreg, <<"bucket">>} || K <- IntKeys ],
@@ -127,7 +129,7 @@ run(read_txn, _KeyGen, _ValueGen, State=#state{pb_pid = Pid, worker_id = Id, pb_
             case antidotec_pb:commit_transaction(Pid, TxId) of
             {ok, BCommitTime} ->
                 CommitTime = binary_to_term(BCommitTime),
-                {ok, State#state{commit_time=CommitTime}};
+                {ok, State#stateD{commit_time=CommitTime}};
             _ ->
                 lager:info("Error read1 on client ~p",[Id]),
                 {error, timeout, State}
@@ -142,7 +144,7 @@ run(read_txn, _KeyGen, _ValueGen, State=#state{pb_pid = Pid, worker_id = Id, pb_
     end;
 
 %% @doc Multikey txn 
-run(read_all_write_one, KeyGen, ValueGen, State=#state{pb_pid = Pid, worker_id = Id, num_partitions=NumPart, pb_port=_Port, target_node=_Node, type_dict=TypeDict}) ->
+run(read_all_write_one, KeyGen, ValueGen, State=#stateD{pb_pid = Pid, worker_id = Id, num_partitions=NumPart, pb_port=_Port, target_node=_Node, type_dict=TypeDict}) ->
     KeyInt = KeyGen(),
     KeyList = lists:seq(KeyInt, KeyInt+NumPart-1), 
     KeyTypeList = get_list_key_type(KeyList, TypeDict, []),
@@ -175,7 +177,7 @@ run(read_all_write_one, KeyGen, ValueGen, State=#state{pb_pid = Pid, worker_id =
     end;
     
 
-run(append_multiple, KeyGen, ValueGen, State=#state{pb_pid = Pid, worker_id = Id, pb_port=Port, target_node=Node, type_dict=TypeDict}) ->
+run(append_multiple, KeyGen, ValueGen, State=#stateD{pb_pid = Pid, worker_id = Id, pb_port=Port, target_node=Node, type_dict=TypeDict}) ->
     KeyInt = KeyGen(),
     KeyList = lists:seq(KeyInt, KeyInt+8), 
     Value = ValueGen(),
@@ -192,7 +194,7 @@ run(append_multiple, KeyGen, ValueGen, State=#state{pb_pid = Pid, worker_id = Id
             lager:info("Timeout on client ~p",[Id]),
             antidotec_pb_socket:stop(Pid),
             {ok, NewPid} = antidotec_pb_socket:start_link(Node, Port),
-            {error, timeout, State#state{pb_pid=NewPid}    };            
+            {error, timeout, State#stateD{pb_pid=NewPid}    };            
         {error, Reason} ->
             lager:error("Error: ~p",[Reason]),
             {error, Reason, State};
@@ -205,7 +207,7 @@ run(append_multiple, KeyGen, ValueGen, State=#state{pb_pid = Pid, worker_id = Id
 
 %% @doc Write to a key
 run(append, KeyGen, _ValueGen,
-    State=#state{type_dict=_TypeDict,
+    State=#stateD{type_dict=_TypeDict,
                  pb_pid = Pid,
                  worker_id = Id,
                  pb_port=_Port,
@@ -232,7 +234,7 @@ run(append, KeyGen, _ValueGen,
 			{ok, BCT} ->
                 report_staleness(MS, BCT, StartTime),
                 CT = binary_to_term(BCT),
-                {ok, State#state{commit_time=CT}};
+                {ok, State#stateD{commit_time=CT}};
 			Error ->
 			    {error, Error, State}
 		    end;
@@ -246,7 +248,7 @@ run(append, KeyGen, _ValueGen,
     end;
 
 run(append_txn, _KeyGen, _ValueGen,
-    State=#state{type_dict=_TypeDict,
+    State=#stateD{type_dict=_TypeDict,
                  pb_pid = Pid,
                  worker_id = Id,
                  pb_port=_Port,
@@ -265,7 +267,7 @@ run(append_txn, _KeyGen, _ValueGen,
             case antidotec_pb:commit_transaction(Pid, TxId) of
             {ok, BCommitTime} ->
                 CommitTime = binary_to_term(BCommitTime),
-                {ok, State#state{commit_time=CommitTime}};
+                {ok, State#stateD{commit_time=CommitTime}};
             Error ->
                 {error, Error, State}
             end;
@@ -279,7 +281,7 @@ run(append_txn, _KeyGen, _ValueGen,
     end;
 
 run(update, KeyGen, ValueGen,
-    State=#state{type_dict=TypeDict,
+    State=#stateD{type_dict=TypeDict,
                  pb_pid = Pid,
                  worker_id = Id,
                  pb_port=Port,
@@ -305,7 +307,7 @@ run(update, KeyGen, ValueGen,
             lager:info("Timeout on client ~p",[Id]),
             antidotec_pb_socket:stop(Pid),
             {ok, NewPid} = antidotec_pb_socket:start_link(Node, Port),
-            {error, timeout, State#state{pb_pid=NewPid}}; 
+            {error, timeout, State#stateD{pb_pid=NewPid}}; 
         {error, Reason} ->
             {error, Reason, State};
         {badrpc, Reason} ->
